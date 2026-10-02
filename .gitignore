@@ -1,0 +1,35 @@
+# Secrets locales (ver .env.example)
+.env
+*.env
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+
+# Node / frontend
+node_modules/
+dist/
+dist-ssr/
+*.local
+
+# Alembic check temporal
+.alembic-check.db
+
+# Estado local del orquestador y registry (no versionados por decisión del proyecto)
+.active-orchestrator-state.json
+.atl/
+
+# Coverage / reportes
+.coverage
+coverage/
+htmlcov/
+*.log
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
