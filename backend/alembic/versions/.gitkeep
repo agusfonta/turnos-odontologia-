@@ -1,0 +1,2 @@
+# Convención (C-02+): migraciones numeradas NNN_descripcion.py (001_..., 002_...).
+# Placeholder: en C-01 no hay tablas; `alembic upgrade head` debe salir 0 en vacío.
