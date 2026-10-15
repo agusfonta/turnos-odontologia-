@@ -6,17 +6,17 @@
 
 | Trigger | Skill | Path |
 |---------|-------|------|
-| Writing, reviewing, or refactoring React/Next.js code; React components, Next.js pages, data fetching, bundle optimization, performance improvements | vercel-react-best-practices | C:\Users\agusf\.agents\skills\vercel-react-best-practices\SKILL.md |
-| Building new UI or reshaping an existing one; aesthetic direction, typography, non-templated visual design | frontend-design | C:\Users\agusf\.agents\skills\frontend-design\SKILL.md |
-| "review my UI", "check accessibility", "audit design", "review UX", "check my site against best practices" | web-design-guidelines | C:\Users\agusf\.agents\skills\web-design-guidelines\SKILL.md |
-| Working with shadcn/ui, component registries, presets, --preset codes, projects with components.json; "shadcn init" | shadcn | C:\Users\agusf\.agents\skills\shadcn\SKILL.md |
-| Working with FastAPI APIs, Pydantic models, dependencies, streaming/SSE, serving frontend apps | fastapi | C:\Users\agusf\.agents\skills\fastapi\SKILL.md |
-| Creating/altering Postgres tables, schema design, migrations, RLS policies, indexes, triggers, functions, pg_cron/pgmq, pgvector, slow queries, connection exhaustion, locking | supabase-postgres-best-practices | C:\Users\agusf\.agents\skills\supabase-postgres-best-practices\SKILL.md |
-| Implementing any feature or bugfix, before writing implementation code | test-driven-development | C:\Users\agusf\.agents\skills\test-driven-development\SKILL.md |
-| Verifying frontend functionality, debugging UI behavior, browser screenshots, browser logs on local web apps | webapp-testing | C:\Users\agusf\.agents\skills\webapp-testing\SKILL.md |
-| docker compose, compose file, multi-container orchestration, Postgres+Redis+API+Vite via compose.yml | docker-skills (compose) | C:\Users\agusf\.agents\skills\docker-compose\SKILL.md |
+| Writing, reviewing, or refactoring React/Next.js code; React components, Next.js pages, data fetching, bundle optimization, performance improvements | vercel-react-best-practices | .agents/skills/vercel-react-best-practices/SKILL.md |
+| Building new UI or reshaping an existing one; aesthetic direction, typography, non-templated visual design | frontend-design | .agents/skills/frontend-design/SKILL.md |
+| "review my UI", "check accessibility", "audit design", "review UX", "check my site against best practices" | web-design-guidelines | .agents/skills/web-design-guidelines/SKILL.md |
+| Working with shadcn/ui, component registries, presets, --preset codes, projects with components.json; "shadcn init" | shadcn | .agents/skills/shadcn/SKILL.md |
+| Working with FastAPI APIs, Pydantic models, dependencies, streaming/SSE, serving frontend apps | fastapi | .agents/skills/fastapi/SKILL.md |
+| Creating/altering Postgres tables, schema design, migrations, RLS policies, indexes, triggers, functions, pg_cron/pgmq, pgvector, slow queries, connection exhaustion, locking | supabase-postgres-best-practices | .agents/skills/supabase-postgres-best-practices/SKILL.md |
+| Implementing any feature or bugfix, before writing implementation code | test-driven-development | .agents/skills/test-driven-development/SKILL.md |
+| Verifying frontend functionality, debugging UI behavior, browser screenshots, browser logs on local web apps | webapp-testing | .agents/skills/webapp-testing/SKILL.md |
+| docker compose, compose file, multi-container orchestration, Postgres+Redis+API+Vite via compose.yml | docker-skills (compose) | .agents/skills/docker-compose/SKILL.md |
 
-> Installed refs (state.skills.installed): vercel-labs/agent-skills@vercel-react-best-practices, anthropics/skills@frontend-design, vercel-labs/agent-skills@web-design-guidelines, shadcn/ui@shadcn, fastapi/fastapi@fastapi, supabase/agent-skills@supabase-postgres-best-practices, obra/superpowers@test-driven-development, anthropics/skills@webapp-testing, full-stack-skills/docker-skills. Docker family on disk: docker-basics, docker-build, docker-buildx, docker-cicd, docker-compose, docker-dockerfile, docker-hub, docker-networking, docker-production, docker-run, docker-scout, docker-security, docker-storage, docker-testcontainers, docker-troubleshooting, docker-ai-ml. SDD workflow skills (openspec-*, active-orchestrator, kb-creator, etc.) intentionally skipped.
+> Source: vendored in `.agents/skills/` (9 skills). Origin refs (state.skills.installed): vercel-labs/agent-skills@vercel-react-best-practices, anthropics/skills@frontend-design, vercel-labs/agent-skills@web-design-guidelines, shadcn/ui@shadcn, fastapi/fastapi@fastapi, supabase/agent-skills@supabase-postgres-best-practices, obra/superpowers@test-driven-development, anthropics/skills@webapp-testing, full-stack-skills/docker-skills (vendored as `docker-compose/`). SDD workflow skills (openspec-*, active-orchestrator, kb-creator, etc.) intentionally skipped.
 
 ## Compact Rules
 
@@ -94,9 +94,9 @@ Pre-digested rules per skill. Delegators copy matching blocks into sub-agent pro
 
 | File | Path | Notes |
 |------|------|-------|
-| CHANGES.md | C:\Users\agusf\Desktop\turnos-odontologia\CHANGES.md | Roadmap operativo: 11 changes C-01…C-11, critical path, dependencias |
-| README.md | C:\Users\agusf\Desktop\turnos-odontologia\README.md | Intro del proyecto |
-| knowledge-base/ | C:\Users\agusf\Desktop\turnos-odontologia\knowledge-base/ | 10 docs canónicos (visión, actores, datos, reglas, flujos, arquitectura) + README |
-| openspec/ | C:\Users\agusf\Desktop\turnos-odontologia\openspec/ | Fuente de verdad de specs por capacidad + changes activos |
+| CHANGES.md | CHANGES.md | Roadmap operativo: 11 changes C-01…C-11, critical path, dependencias |
+| README.md | README.md | Intro del proyecto |
+| knowledge-base/ | knowledge-base/ | 10 docs canónicos (visión, actores, datos, reglas, flujos, arquitectura) + README |
+| openspec/ | openspec/ | Fuente de verdad de specs por capacidad + changes activos |
 
 No se encontraron AGENTS.md / CLAUDE.md / .cursorrules / GEMINI.md / copilot-instructions.md a nivel proyecto. Stack del proyecto (KB): FastAPI + SQLAlchemy + PostgreSQL + Redis + React + TypeScript + Vite + Docker.
