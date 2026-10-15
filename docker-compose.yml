@@ -2,7 +2,7 @@
 # Data stores sin ports: publicados (override local opcional en C-11).
 services:
   api:
-    build: ./backend
+    build: ./src/backend
     ports:
       - "8000:8000"
     environment:
@@ -20,7 +20,7 @@ services:
     restart: unless-stopped
 
   web:
-    build: ./frontend
+    build: ./src/frontend
     ports:
       - "5173:5173"
     environment:
