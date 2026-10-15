@@ -1,0 +1,102 @@
+# Skill Registry
+
+**Delegator use only.** Any agent that launches sub-agents reads this registry to resolve compact rules, then injects them directly into sub-agent prompts. Sub-agents do NOT read this registry or individual SKILL.md files.
+
+## User Skills
+
+| Trigger | Skill | Path |
+|---------|-------|------|
+| Writing, reviewing, or refactoring React/Next.js code; React components, Next.js pages, data fetching, bundle optimization, performance improvements | vercel-react-best-practices | C:\Users\agusf\.agents\skills\vercel-react-best-practices\SKILL.md |
+| Building new UI or reshaping an existing one; aesthetic direction, typography, non-templated visual design | frontend-design | C:\Users\agusf\.agents\skills\frontend-design\SKILL.md |
+| "review my UI", "check accessibility", "audit design", "review UX", "check my site against best practices" | web-design-guidelines | C:\Users\agusf\.agents\skills\web-design-guidelines\SKILL.md |
+| Working with shadcn/ui, component registries, presets, --preset codes, projects with components.json; "shadcn init" | shadcn | C:\Users\agusf\.agents\skills\shadcn\SKILL.md |
+| Working with FastAPI APIs, Pydantic models, dependencies, streaming/SSE, serving frontend apps | fastapi | C:\Users\agusf\.agents\skills\fastapi\SKILL.md |
+| Creating/altering Postgres tables, schema design, migrations, RLS policies, indexes, triggers, functions, pg_cron/pgmq, pgvector, slow queries, connection exhaustion, locking | supabase-postgres-best-practices | C:\Users\agusf\.agents\skills\supabase-postgres-best-practices\SKILL.md |
+| Implementing any feature or bugfix, before writing implementation code | test-driven-development | C:\Users\agusf\.agents\skills\test-driven-development\SKILL.md |
+| Verifying frontend functionality, debugging UI behavior, browser screenshots, browser logs on local web apps | webapp-testing | C:\Users\agusf\.agents\skills\webapp-testing\SKILL.md |
+| docker compose, compose file, multi-container orchestration, Postgres+Redis+API+Vite via compose.yml | docker-skills (compose) | C:\Users\agusf\.agents\skills\docker-compose\SKILL.md |
+
+> Installed refs (state.skills.installed): vercel-labs/agent-skills@vercel-react-best-practices, anthropics/skills@frontend-design, vercel-labs/agent-skills@web-design-guidelines, shadcn/ui@shadcn, fastapi/fastapi@fastapi, supabase/agent-skills@supabase-postgres-best-practices, obra/superpowers@test-driven-development, anthropics/skills@webapp-testing, full-stack-skills/docker-skills. Docker family on disk: docker-basics, docker-build, docker-buildx, docker-cicd, docker-compose, docker-dockerfile, docker-hub, docker-networking, docker-production, docker-run, docker-scout, docker-security, docker-storage, docker-testcontainers, docker-troubleshooting, docker-ai-ml. SDD workflow skills (openspec-*, active-orchestrator, kb-creator, etc.) intentionally skipped.
+
+## Compact Rules
+
+Pre-digested rules per skill. Delegators copy matching blocks into sub-agent prompts as `## Project Standards (auto-resolved)`.
+
+### vercel-react-best-practices
+- Eliminate waterfalls: parallelize independent fetches with Promise.all, start promises early / await late, defer await into branches
+- Bundle: import directly (no barrel files), prefer statically analyzable paths, next/dynamic for heavy components, defer third-party scripts
+- Client fetching: use SWR for dedup; dedupe global event listeners; use passive listeners for scroll; version localStorage schema
+- Re-render: don't subscribe to state only used in callbacks; derive state during render (not effects); functional setState; split independent hooks
+- Rendering: hoist static JSX, content-visibility for long lists, ternary not && for conditionals, useTransition/useDeferredValue for non-urgent work
+- JS: early exit, Map/Set for lookups, combine filter/map passes, hoist RegExp out of loops, defer non-critical work to requestIdleCallback
+- Rule files live in rules/ (e.g. rules/async-parallel.md); full guide in AGENTS.md
+
+### frontend-design
+- Ground design in subject matter: propose concrete subject + audience + job before designing; use brief's real content
+- Hero first: open with the most characteristic thing (headline/image/demo), not default big-number + gradient accent
+- Typography: 1-2 deliberate families with clear scale; line length <80 chars; never single-word accent color, all-caps labels, or gratuitous eyebrows
+- Structure encodes info: no numbered 01/02/03 unless content is a real sequence; no SaaS-card-kit (identical rounded cards + soft shadow everywhere)
+- One orchestrated motion moment max; interaction-driven motion OK; respect reduced motion, keyboard focus, mobile responsive
+- Two passes: plan tokens (color 4-6 hex, type roles, layout+ASCII wireframe, principles) → review against brief for genericness → then code
+- Copy: user vocabulary, active voice, CTA names the outcome ("Save changes"); errors explain fix, empty states invite action
+
+### web-design-guidelines
+- Always fetch fresh guidelines first via WebFetch: https://raw.githubusercontent.com/vercel-labs/web-interface-guidelines/main/command.md
+- Review the user-specified file or pattern (ask which files if not given); never review from memory of old rules
+- Apply ALL fetched rules; output findings only in the terse `file:line` format defined by the guidelines
+- No implementation in review mode — report findings, don't rewrite code
+
+### shadcn
+- Existing components first: `npx shadcn@latest search` before custom UI; compose (Tabs+Card+form) with built-in variants and semantic colors (bg-primary), never raw colors
+- Styling: className for layout only; flex+gap-* (never space-x/y-*); size-* for square; truncate shorthand; cn() for conditionals; no manual dark: overrides or z-index on overlays
+- Forms: FieldGroup+Field (never raw div layout); InputGroupInput/Textarea inside InputGroup; ToggleGroup for 2-7 options; FieldSet+FieldLegend for groups; data-invalid on Field + aria-invalid on control
+- Composition: items inside Groups (SelectItem→SelectGroup); Dialog/Sheet/Drawer always need Title (sr-only OK); full Card composition; TabsTrigger inside TabsList; Avatar needs Fallback; Button loading = Spinner+disabled (no isPending)
+- Icons: data-icon="inline-start|inline-end", no sizing classes inside components, pass icon objects not string keys
+- CLI via project package runner (npx/pnpm dlx/bunx): docs+fetch URLs before using a component; add with --dry-run/--diff preview; never --overwrite without approval; never guess registry — ask
+
+### fastapi
+- Run with `fastapi dev` (localhost+reload) / `fastapi run` (prod); declare entrypoint in pyproject [tool.fastapi]; serve built SPA via app.frontend("/", directory="dist") not manual StaticFiles
+- Always Annotated style: `Annotated[int, Path/Query(...)]` and `CurrentUserDep = Annotated[dict, Depends(get_current_user)]`; router-level prefix/tags/shared deps on APIRouter, not include_router
+- Return type or response_model for validation/filtering/Rust-side serialization; never ORJSONResponse/UJSONResponse (deprecated); never `...` defaults; never Pydantic RootModel (use Annotated[list[int], Field, Body()])
+- def by default (threadpool); async only when inner calls are truly non-blocking; never block inside async; mix via Asyncer
+- One HTTP operation per function; SSE via response_class=EventSourceResponse + yield ServerSentEvent; tooling: uv, Ruff, ty, SQLModel over SQLAlchemy, HTTPX over Requests
+
+### supabase-postgres-best-practices
+- Load this skill BEFORE any DB change, even one column or one query; rule details live in references/ (query-*, conn-*, security-*, schema-*, lock-*, data-*, monitor-*, advanced-*)
+- Query: ensure supporting indexes (prefer partial indexes where selective); check EXPLAIN before/after; avoid N+1 and SELECT *
+- Connections: pool (transaction mode where appropriate); never per-request new connections; watch for exhaustion/timeouts
+- Security: RLS on tenant tables + tests verifying rows invisible to wrong user/tenant; least-privilege roles
+- Schema: right column types from the start; constraints enforce invariants (e.g. exclusion constraint for no-overlap per odontólogo); declarative migrations, reviewable diffs
+- Concurrency: short transactions, correct isolation, avoid long locks; use queues (pgmq) / scheduled jobs (pg_cron) instead of app polling
+
+### test-driven-development
+- IRON LAW: no production code without a failing test first; code written before test → delete it, start over (no "reference", no adapting)
+- RED: one behavior per test, clear behavior name, real code (mocks only if unavoidable); run and confirm it FAILS for the expected reason (feature missing, not typo)
+- GREEN: minimal code to pass, nothing more (no YAGNI features); run and confirm pass + full project suite still green (bare pytest/npm test/cargo test), output pristine
+- REFACTOR only on green: remove duplication, improve names, extract helpers; re-run after each step, stay green, add no behavior
+- Bug fix = failing reproduction test first, then cycle; hard-to-test = simplify design; suite red you ignore = report falsified by omission
+
+### webapp-testing
+- Python Playwright only: sync_playwright(), headless Chromium, browser.close() always; descriptive selectors (role=/text=/CSS/ID)
+- Scripts in scripts/ are black boxes: run `python scripts/with_server.py --help` first, never read source unless --help insufficient
+- Single server: `python scripts/with_server.py --server "npm run dev" --port 5173 -- python your_automation.py`; multi (backend+frontend): repeat --server/--port flags
+- Automation script contains only Playwright logic (servers pre-managed); always page.wait_for_load_state('networkidle') before DOM inspect/screenshot; reconnaissance-then-action (screenshot/DOM → selectors → act)
+
+### docker-skills
+- Compose file: services/networks/volumes(/secrets/configs) top level; service = image or build + ports + environment/env_file + volumes + healthcheck + restart: unless-stopped + depends_on
+- Ordering: depends_on with condition: service_healthy (bare depends_on only waits for START); every depended-on service needs a healthcheck (e.g. pg_isready for postgres:16-alpine)
+- Networking: default network reaches peers by service name; backend-only data stores get internal: true network; no ports: for internal-only services
+- Env: .env auto-loaded for ${VAR} substitution; env_file for per-env bulk vars; never commit .env with secrets (gitignore + .env.example placeholders)
+- Multi-env: compose.yml base + compose.override.yml (auto local) / compose.prod.yml (-f explicit); validate with `docker compose config`; modern CLI is `docker compose` (space), not docker-compose
+- Single-container → docker-run skill; Dockerfile authoring → docker-dockerfile; multi-host/scaling → Swarm/K8s (kompose convert), not Compose
+
+## Project Conventions
+
+| File | Path | Notes |
+|------|------|-------|
+| CHANGES.md | C:\Users\agusf\Desktop\turnos-odontologia\CHANGES.md | Roadmap operativo: 11 changes C-01…C-11, critical path, dependencias |
+| README.md | C:\Users\agusf\Desktop\turnos-odontologia\README.md | Intro del proyecto |
+| knowledge-base/ | C:\Users\agusf\Desktop\turnos-odontologia\knowledge-base/ | 10 docs canónicos (visión, actores, datos, reglas, flujos, arquitectura) + README |
+| openspec/ | C:\Users\agusf\Desktop\turnos-odontologia\openspec/ | Fuente de verdad de specs por capacidad + changes activos |
+
+No se encontraron AGENTS.md / CLAUDE.md / .cursorrules / GEMINI.md / copilot-instructions.md a nivel proyecto. Stack del proyecto (KB): FastAPI + SQLAlchemy + PostgreSQL + Redis + React + TypeScript + Vite + Docker.
