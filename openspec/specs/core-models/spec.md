@@ -61,7 +61,7 @@ The system SHALL provide a `tratamientos` table with `nombre VARCHAR(120) NOT NU
 - **THEN** only rows with `is_active = true` are returned, supported by the partial index
 
 ### Requirement: Persistencia e infra
-The system SHALL provide a synchronous `BaseRepository[T]` (`get`, paginated `list` excluding inactive by default, `add`, `soft_delete`) with strict return types, and a `UnitOfWork` with context manager (`commit`/`rollback`) over the `Session` from `core/db.py`. It SHALL use `def`, never `async def` (no non-blocking I/O; async hard rule). Migration `backend/alembic/versions/001_core_tables.py` (convention `NNN_*`, `down_revision=None`) SHALL create the enum plus the 4 tables with checks and indexes, handwritten as a reviewable diff, with a `downgrade()` that reverts everything in reverse order.
+The system SHALL provide a synchronous `BaseRepository[T]` (`get`, paginated `list` excluding inactive by default, `add`, `soft_delete`) with strict return types, and a `UnitOfWork` with context manager (`commit`/`rollback`) over the `Session` from `core/db.py`. It SHALL use `def`, never `async def` (no non-blocking I/O; async hard rule). Migration `src/backend/alembic/versions/001_core_tables.py` (convention `NNN_*`, `down_revision=None`) SHALL create the enum plus the 4 tables with checks and indexes, handwritten as a reviewable diff, with a `downgrade()` that reverts everything in reverse order.
 
 #### Scenario: Migracion 001 up-down-up
 - **WHEN** `alembic upgrade head` runs on an empty database, then `downgrade`, then `upgrade` again

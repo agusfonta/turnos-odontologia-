@@ -1,7 +1,7 @@
 # Design: c-02-modelos-core-y-seed
 
 ## Context
-C-01 dejó el esqueleto verificado: `backend/app/{domain,application,infrastructure,api,core}` con `main.py` (prefijo `/api`), `core/settings.py` (6 vars, `CANCEL_MIN_HOURS=24` default), `core/db.py` (`Base: DeclarativeBase`, `SessionLocal`, `get_db` sincrónica), `alembic/env.py` leyendo `DATABASE_URL` con `versions/` vacío, y tests smoke en verde. KB 04 fija atributos/constraints/índices por entidad; KB 08 fija capas `domain/application/infrastructure` y jobs Redis (estos últimos llegan en C-08); DD-01 exige capas que permitan evolucionar a multi-tenant; DD-03 fija reserva sin login. Se diseña solo persistencia base + seed: sin HTTP, sin auth funcional, sin Turno.
+C-01 dejó el esqueleto verificado: `src/backend/app/{domain,application,infrastructure,api,core}` con `main.py` (prefijo `/api`), `core/settings.py` (6 vars, `CANCEL_MIN_HOURS=24` default), `core/db.py` (`Base: DeclarativeBase`, `SessionLocal`, `get_db` sincrónica), `alembic/env.py` leyendo `DATABASE_URL` con `versions/` vacío, y tests smoke en verde. KB 04 fija atributos/constraints/índices por entidad; KB 08 fija capas `domain/application/infrastructure` y jobs Redis (estos últimos llegan en C-08); DD-01 exige capas que permitan evolucionar a multi-tenant; DD-03 fija reserva sin login. Se diseña solo persistencia base + seed: sin HTTP, sin auth funcional, sin Turno.
 
 ## Decisions
 1. **`User` staff-only (`secretaria`/`odontologo`, enum Postgres `user_role`)** — por qué: DD-03 + matriz 03 (paciente opera sin login). Alternativa (rol `paciente` en users): descartada, crearía cuentas inútiles y contradice Flujo 1. Trade-off: si un día hay login paciente, será migración + C-03 dedicado.

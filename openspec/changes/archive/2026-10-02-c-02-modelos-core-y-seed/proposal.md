@@ -1,7 +1,7 @@
 # Proposal: c-02-modelos-core-y-seed
 
 ## Why
-C-03 (auth/RBAC) necesita `users`, C-04 (disponibilidad/reserva) necesita `profesionales`, `pacientes` y `tratamientos` con duraciones para calcular huecos (RN-AG-03), y US-002/004/006 dependen de estas tablas. Hoy `backend/app/{domain,infrastructure}/` están vacíos y `alembic/versions/` no tiene ninguna migración: sin este change todo el camino crítico está bloqueado. Además fija los patrones de persistencia (`AuditMixin`, `BaseRepository[T]`, `UnitOfWork`) que el resto de los changes reutiliza.
+C-03 (auth/RBAC) necesita `users`, C-04 (disponibilidad/reserva) necesita `profesionales`, `pacientes` y `tratamientos` con duraciones para calcular huecos (RN-AG-03), y US-002/004/006 dependen de estas tablas. Hoy `src/backend/app/{domain,infrastructure}/` están vacíos y `alembic/versions/` no tiene ninguna migración: sin este change todo el camino crítico está bloqueado. Además fija los patrones de persistencia (`AuditMixin`, `BaseRepository[T]`, `UnitOfWork`) que el resto de los changes reutiliza.
 
 ## What (scope CHANGES.md, autoritativo)
 - Modelos: `User` (roles `secretaria`/`odontologo`, sin rol paciente), `Profesional` (matrícula única, `activo`, `slot_default_min`), `Paciente` (teléfono E.164, índice en teléfono), `Tratamiento` (`duracion_min > 0`, `activo`).

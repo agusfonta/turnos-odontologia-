@@ -1,4 +1,4 @@
-"""T1 RED: health endpoint smoke test. Debe FALLAR hasta crear backend/app/."""
+"""T1 RED: health endpoint smoke test. Debe FALLAR hasta crear src/backend/app/."""
 
 import os
 

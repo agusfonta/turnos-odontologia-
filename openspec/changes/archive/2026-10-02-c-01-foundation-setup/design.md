@@ -1,7 +1,7 @@
 # Design: C-01-foundation-setup
 
 ## Context
-Greenfield total: el repo no tiene `backend/`, `frontend/`, `docker-compose.yml` ni CI. KB 08 §Estructura fija el árbol; DD-02 fija el stack; DD-01 exige monolito modular single-clínica con capas que permitan evolucionar a multi-tenant. Se diseña solo lo necesario para que C-02 modele sin retrabajo.
+Greenfield total: el repo no tiene `src/backend/`, `src/frontend/`, `docker-compose.yml` ni CI. KB 08 §Estructura fija el árbol; DD-02 fija el stack; DD-01 exige monolito modular single-clínica con capas que permitan evolucionar a multi-tenant. Se diseña solo lo necesario para que C-02 modele sin retrabajo.
 
 ## Decisions
 1. **Monolito modular con 5 paquetes backend (`domain/application/infrastructure/api/core`)** — por qué: lo exige 08 y prepara multi-tenant (DD-01) sin pagar microservicios en v1. Alternativa (flat `main.py` + routers sueltos): descartada, obligaría a reestructurar en C-02. Trade-off: 5 `__init__.py` vacíos iniciales.

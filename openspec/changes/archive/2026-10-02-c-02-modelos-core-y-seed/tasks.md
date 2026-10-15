@@ -3,7 +3,7 @@
 > Orden secuencial (un solo agente, GATE 1, governance CRÍTICO). Cada checkbox es verificable. Cargar skills indicadas antes de codificar. TDD obligatorio: ningún código de producción sin test rojo previo.
 
 - [x] **T1 — `AuditMixin` + base + convenciones (skills: `supabase-postgres-best-practices`, `test-driven-development`)**
-  - RED: `backend/tests/test_audit_mixin.py::test_soft_delete_marca_is_active_y_deleted_at` + `::test_list_excluye_inactivos_por_defecto` — deben FALLAR (no existe el mixin).
+  - RED: `src/backend/tests/test_audit_mixin.py::test_soft_delete_marca_is_active_y_deleted_at` + `::test_list_excluye_inactivos_por_defecto` — deben FALLAR (no existe el mixin).
   - GREEN: `AuditMixin` (`is_active`, `created_at/updated_at` timestamptz con `server_default=now()`, `deleted_at` nullable) sobre `Base` existente de `core/db.py`; prohibido `create_all` en código.
   - TRIANGULATE: `test_updated_at_cambia_en_update` + `test_created_at_tiene_default_en_db`.
   - Verificación: `pytest tests/test_audit_mixin.py` verde.
@@ -34,7 +34,7 @@
 
 - [x] **T6 — CI con Postgres + verificación E2E y cierre**
   - Agregar `services: postgres:15-alpine` (+ healthcheck `pg_isready`) al job `backend` de `.github/workflows/ci.yml` con `TEST_DATABASE_URL` apuntando al servicio; los tests sin DB siguen corriendo igual.
-  - Verificación final: `pytest` verde completo, ciclo mig newcomers up/down/up, seed 2×, `rg -i "create_all" backend/app backend/alembic` vacío, ningún dato real en repo. Dejar nota lista para `/opsx:archive` + desbloqueo de C-03.
+  - Verificación final: `pytest` verde completo, ciclo mig newcomers up/down/up, seed 2×, `rg -i "create_all" src/backend/app src/backend/alembic` vacío, ningún dato real en repo. Dejar nota lista para `/opsx:archive` + desbloqueo de C-03.
 
 ## Criterio de cierre
 T1–T6 en verde + `alembic upgrade head` crea exactamente `users, profesionales, pacientes, tratamientos` + seed idempotente verificado + CI con PG. Recién entonces archivar y habilitar C-03.

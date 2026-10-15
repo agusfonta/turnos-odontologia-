@@ -100,9 +100,9 @@ Paso │ Agente A (Backend Core)      │ Agente B (Backend Aux)       │ Agent
 ### [C-01] `foundation-setup`
 - **Estado**: `[x]` completado (archivado 2026-10-02 → `openspec/changes/archive/2026-10-02-c-01-foundation-setup/`; spec sincronizada en `openspec/specs/foundation/spec.md`)
 - **Scope**: Scaffolding completo del monorepo + infraestructura base (DD-02)
-  - Estructura `backend/app/{domain,application,infrastructure,api,core}` + `frontend/src/{features,shared,pages}` según `08`
-  - `backend/`: FastAPI app mínima con `GET /api/health`, Alembic inicializado, `core/` con settings (zona `America/Argentina/Buenos_Aires`), logger, db, exceptions
-  - `frontend/`: Vite + React 18 + TS 5 + Tailwind + Zustand + api client base
+  - Estructura `src/backend/app/{domain,application,infrastructure,api,core}` + `src/frontend/src/{features,shared,pages}` según `08`
+  - `src/backend/`: FastAPI app mínima con `GET /api/health`, Alembic inicializado, `core/` con settings (zona `America/Argentina/Buenos_Aires`), logger, db, exceptions
+  - `src/frontend/`: Vite + React 18 + TS 5 + Tailwind + Zustand + api client base
   - `docker-compose.yml`: api + web + postgres 15 + redis 7
   - `.env.example` en cada sub-proyecto: `DATABASE_URL`, `REDIS_URL`, `JWT_SECRET`, `WA_PROVIDER_API_KEY`, `CLINIC_TIMEZONE`, `CANCEL_MIN_HOURS` (sin defaults sensibles hardcodeados)
   - GitHub Actions CI: jobs paralelos backend (pytest) y frontend (tsc + build)

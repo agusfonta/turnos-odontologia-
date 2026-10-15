@@ -9,8 +9,8 @@ Frontend: React + TypeScript + Vite + Tailwind + Zustand. Compose v2.
 
 ## Estructura
 
-- `backend/app/{domain,application,infrastructure,api,core}` — API FastAPI (`/api/*`)
-- `frontend/src/{features,shared,pages}` — SPA Vite (consume `VITE_API_BASE_URL`)
+- `src/backend/app/{domain,application,infrastructure,api,core}` — API FastAPI (`/api/*`)
+- `src/frontend/src/{features,shared,pages}` — SPA Vite (consume `VITE_API_BASE_URL`)
 - `docker-compose.yml` — `api` :8000 + `web` :5173 + `postgres` + `redis`
 
 ## Quickstart (C-01)

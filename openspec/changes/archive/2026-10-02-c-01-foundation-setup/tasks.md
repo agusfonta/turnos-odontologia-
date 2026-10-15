@@ -3,8 +3,8 @@
 > Orden secuencial (un solo agente, GATE 0). Cada checkbox es verificable. Cargar skills indicadas antes de codificar. TDD obligatorio en backend.
 
 - [x] **T1 — Esqueleto backend + settings/timezone/logger/db/exceptions (skills: `fastapi`, `test-driven-development`)**
-  - RED: `backend/tests/test_health.py::test_health_ok` (espera 200 `{"status":"ok"}`) + `test_settings.py::test_default_timezone_es_buenos_aires` — deben FALLAR (no existe `app/`).
-  - GREEN: crear `backend/app/{domain,application,infrastructure,api,core}/__init__.py`, `api/health.py` (`APIRouter`, `def`, `response_model=HealthResponse`), `api/__init__.py`, `main.py` (prefijo `/api`), `core/{settings,logger,db,exceptions}.py`, `requirements.txt` (fastapi 0.110+, sqlalchemy, alembic, pydantic-settings, psycopg), `pytest.ini`/`pyproject`.
+  - RED: `src/backend/tests/test_health.py::test_health_ok` (espera 200 `{"status":"ok"}`) + `test_settings.py::test_default_timezone_es_buenos_aires` — deben FALLAR (no existe `app/`).
+  - GREEN: crear `src/backend/app/{domain,application,infrastructure,api,core}/__init__.py`, `api/health.py` (`APIRouter`, `def`, `response_model=HealthResponse`), `api/__init__.py`, `main.py` (prefijo `/api`), `core/{settings,logger,db,exceptions}.py`, `requirements.txt` (fastapi 0.110+, sqlalchemy, alembic, pydantic-settings, psycopg), `pytest.ini`/`pyproject`.
   - TRIANGULATE: segundo caso `test_health_content_type_json` + `test_missing_jwt_secret_fails_validation`.
   - Verificación: `pytest` verde; `GET /api/health` manual.
 
@@ -17,7 +17,7 @@
   - Verificación: `npm run dev` renderiza; `tsc --noEmit` limpio; cero `any` (`rg "\bany\b" src` vacío salvo comentarios).
 
 - [x] **T4 — Compose + env examples + gitignore (skill: `docker-skills (compose)`)**
-  - `docker-compose.yml` (api/web/postgres:15-alpine/redis:7-alpine, healthchecks `pg_isready`/`redis-cli ping`, `depends_on service_healthy`, `restart: unless-stopped`, red por defecto, sin `ports:` en data stores); `Dockerfile` api (python 3.12-slim) + `Dockerfile`/`vite config` web; `.env.example` raíz + `backend/.env.example` + `frontend/.env.example` (6 vars, sensibles `changeme`); `.gitignore` (`.env`, `__pycache__`, `node_modules`, `dist`).
+  - `docker-compose.yml` (api/web/postgres:15-alpine/redis:7-alpine, healthchecks `pg_isready`/`redis-cli ping`, `depends_on service_healthy`, `restart: unless-stopped`, red por defecto, sin `ports:` en data stores); `Dockerfile` api (python 3.12-slim) + `Dockerfile`/`vite config` web; `.env.example` raíz + `src/backend/.env.example` + `src/frontend/.env.example` (6 vars, sensibles `changeme`); `.gitignore` (`.env`, `__pycache__`, `node_modules`, `dist`).
   - Verificación: `docker compose config` válido; `docker compose up --build -d` → 4 healthy; `curl localhost:8000/api/health` 200.
 
 - [x] **T5 — CI paralela + verificación E2E del scaffolding**

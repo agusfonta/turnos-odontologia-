@@ -24,7 +24,7 @@
 
 ### Persistencia e infra
 - **MUST** existir `BaseRepository[T]` sincrónico (`get`, `list` paginado excluyendo inactivos por defecto, `add`, `soft_delete`) con tipos de retorno estrictos, y `UnitOfWork` con context manager (`commit`/`rollback`) sobre `Session` de `core/db.py`; **MUST** usar `def`, nunca `async def` (sin I/O no-bloqueante; regla dura async).
-- **MUST** la migración `backend/alembic/versions/001_core_tables.py` (convención `NNN_*`, `down_revision=None`) crear enum + 4 tablas + checks + índices, escrita a mano como diff revisable, con `downgrade()` que revierte todo en orden inverso.
+- **MUST** la migración `src/backend/alembic/versions/001_core_tables.py` (convención `NNN_*`, `down_revision=None`) crear enum + 4 tablas + checks + índices, escrita a mano como diff revisable, con `downgrade()` que revierte todo en orden inverso.
 - **MUST** existir seed CLI idempotente (`run_seed`, NO auto-run en import/startup) con get-or-create por claves naturales (`users.email`, `profesionales.matricula`, `tratamientos.nombre`): 1 secretaria sintética, 1 profesional ejemplo ficticio, 3 tratamientos (limpieza 30, consulta 20, conducto 60); **MUST** leer `CANCEL_MIN_HOURS` de settings (SU-01, nunca hardcode) y **MUST** usar solo datos sintéticos (teléfonos de rango ficticio, dominio `example.test`).
 - **MUST** el seed hashear con bcrypt (dependencia nueva) vía función mínima `hash_password()` en `core/security.py`; verify/login quedan en C-03.
 

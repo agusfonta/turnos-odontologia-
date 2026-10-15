@@ -14,18 +14,19 @@
 
 ```
 turnos-odontologia/
-├── backend/
-│   └── app/
-│       ├── domain/          # entidades, reglas RN-*
-│       ├── application/     # casos de uso (reservar, mover, bloquear)
-│       ├── infrastructure/  # SQLAlchemy, repos, Redis, WA client
-│       ├── api/             # routers FastAPI + schemas
-│       └── core/            # config, seguridad JWT, deps
-├── frontend/
-│   └── src/
-│       ├── features/        # reserva, agenda, turnos
-│       ├── shared/          # ui, api client
-│       └── pages/           # /reservar, /agenda, /turnos/:token
+├── src/
+│   ├── backend/
+│   │   └── app/
+│   │       ├── domain/          # entidades, reglas RN-*
+│   │       ├── application/     # casos de uso (reservar, mover, bloquear)
+│   │       ├── infrastructure/  # SQLAlchemy, repos, Redis, WA client
+│   │       ├── api/             # routers FastAPI + schemas
+│   │       └── core/            # config, seguridad JWT, deps
+│   ├── frontend/
+│   │   └── src/
+│   │       ├── features/        # reserva, agenda, turnos
+│   │       ├── shared/          # ui, api client
+│   │       └── pages/           # /reservar, /agenda, /turnos/:token
 └── docker-compose.yml       # api + web + postgres + redis
 ```
 

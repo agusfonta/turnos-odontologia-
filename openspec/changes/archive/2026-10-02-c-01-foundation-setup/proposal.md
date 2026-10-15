@@ -4,7 +4,7 @@
 Sin scaffolding no hay camino crítico: C-02→C-11 cuelgan de una base que hoy no existe (repo solo con `knowledge-base/`, `CHANGES.md`, `openspec/` vacíos). Este change crea el monorepo modular single-clínica (DD-01) con el stack impuesto (DD-02) y la infraestructura local mínima para desarrollar y verificar cada change posterior con CI paralela.
 
 ## What (scope CHANGES.md, autoritativo)
-- Estructura `backend/app/{domain,application,infrastructure,api,core}` + `frontend/src/{features,shared,pages}` según KB 08.
+- Estructura `src/backend/app/{domain,application,infrastructure,api,core}` + `src/frontend/src/{features,shared,pages}` según KB 08.
 - Backend: FastAPI mínima con `GET /api/health`, Alembic inicializado, `core/` con settings (zona `America/Argentina/Buenos_Aires`), logger, db, exceptions.
 - Frontend: Vite + React 18 + TS 5 + Tailwind + Zustand + api client base.
 - `docker-compose.yml`: servicios `api` + `web` + `postgres 15` + `redis 7`.
