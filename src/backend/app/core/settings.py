@@ -17,6 +17,9 @@ class Settings(BaseSettings):
     DATABASE_URL: str = Field(min_length=1)
     REDIS_URL: str = Field(min_length=1)
     JWT_SECRET: SecretStr = Field(min_length=1)
+    JWT_REFRESH_SECRET: SecretStr | None = None
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+    REFRESH_TOKEN_EXPIRE_DAYS: int = 7
     WA_PROVIDER_API_KEY: SecretStr = Field(min_length=1)
     CLINIC_TIMEZONE: str = "America/Argentina/Buenos_Aires"
     CANCEL_MIN_HOURS: int = Field(default=24, ge=0)

@@ -1,0 +1,340 @@
+{
+  "discovery": {
+    "casos_de_uso": [
+      "Como paciente, quiero ver horarios libres por odontólogo para reservar sin WhatsApp",
+      "Como secretaria, quiero ver agenda día/semana por odontólogo para crear y mover turnos",
+      "Como odontólogo, quiero ver mi agenda del día",
+      "Como paciente, quiero cancelar/reprogramar con anticipación"
+    ],
+    "competitors": [
+      {
+        "name": "DentalSoft AR",
+        "notes_file": "discovery/sources/competidores-saas-ar.md"
+      },
+      {
+        "name": "Dentalink AR",
+        "notes_file": "discovery/sources/competidores-saas-ar.md"
+      },
+      {
+        "name": "AgendaPro AR",
+        "notes_file": "discovery/sources/competidores-saas-ar.md"
+      },
+      {
+        "name": "Docturno",
+        "notes_file": "discovery/sources/competidores-saas-ar.md"
+      },
+      {
+        "name": "Doctoralia Pro AR",
+        "notes_file": "discovery/sources/competidores-saas-ar.md"
+      },
+      {
+        "name": "Dentidesk",
+        "notes_file": "discovery/sources/competidores-saas-ar.md"
+      },
+      {
+        "name": "Doctocliq",
+        "notes_file": "discovery/sources/competidores-saas-ar.md"
+      },
+      {
+        "name": "Dricloud",
+        "notes_file": "discovery/sources/competidores-saas-ar.md"
+      },
+      {
+        "name": "Clinic Cloud",
+        "notes_file": "discovery/sources/competidores-saas-ar.md"
+      },
+      {
+        "name": "Nubimed",
+        "notes_file": "discovery/sources/competidores-saas-ar.md"
+      },
+      {
+        "name": "Simples Dental",
+        "notes_file": "discovery/sources/competidores-saas-ar.md"
+      },
+      {
+        "name": "Dental Office",
+        "notes_file": "discovery/sources/competidores-saas-ar.md"
+      },
+      {
+        "name": "Nimbo",
+        "notes_file": "discovery/sources/competidores-saas-ar.md"
+      },
+      {
+        "name": "OpenDental",
+        "notes_file": "discovery/sources/competidores-saas-ar.md"
+      },
+      {
+        "name": "Curve Dental",
+        "notes_file": "discovery/sources/competidores-saas-ar.md"
+      },
+      {
+        "name": "CareStack",
+        "notes_file": "discovery/sources/competidores-saas-ar.md"
+      },
+      {
+        "name": "Dentrix",
+        "notes_file": "discovery/sources/competidores-saas-ar.md"
+      },
+      {
+        "name": "Fresha",
+        "notes_file": "discovery/sources/competidores-saas-ar.md"
+      },
+      {
+        "name": "SimplyBook.me",
+        "notes_file": "discovery/sources/competidores-saas-ar.md"
+      },
+      {
+        "name": "Dentiqa AR",
+        "notes_file": "discovery/sources/competidores-saas-ar.md"
+      }
+    ],
+    "created_by": "discovery-research",
+    "funcionalidades_necesarias": [
+      "Agenda por odontólogo con vista día/semana",
+      "Reserva de turno online",
+      "Cancelación y reprogramación",
+      "Gestión secretaria y bloqueo de horarios"
+    ],
+    "funcionalidades_opcionales": [
+      "Recordatorio automático por WhatsApp 24hs antes + confirmación",
+      "Historia clínica / odontograma (fuera v1)",
+      "Pagos/señas online"
+    ],
+    "integraciones": [
+      "WhatsApp para recordatorio/confirmación (solo envío v1)"
+    ],
+    "preguntas_abiertas": [
+      "¿Login paciente o nombre+teléfono?",
+      "¿Anticipación mínima 24h o 2h?",
+      "¿Duraciones por tratamiento desde v1?",
+      "¿Stack impuesto? ¿Plazo?"
+    ],
+    "problema": "Consultorios odontológicos coordinan por WhatsApp/papel: dobles reservas, ausentismo y tiempo admin confirmando manualmente",
+    "reglas_de_negocio": [
+      "No superponer turnos por odontólogo",
+      "No cancelar/reprogramar con menos de anticipación mínima (supuesto 24h)",
+      "Duraciones por tratamiento a definir"
+    ],
+    "restricciones": [
+      "Sin stack impuesto (supuesto)",
+      "Mobile-first, reserva desde teléfono",
+      "Presupuesto clínica chica/mediana"
+    ],
+    "riesgos": [
+      "Agenda desactualizada muestra huecos falsos (riesgo principal)",
+      "Pacientes siguen prefiriendo WhatsApp por costumbre",
+      "Recordatorio puede no bajar no-show"
+    ],
+    "sources": [
+      "https://dentalsoft.com.ar",
+      "https://www.softwaredentalink.com/ar",
+      "https://agendapro.com/ar",
+      "https://profesionales.docturno.com",
+      "https://pro.doctoralia.com/ar/precio",
+      "https://www.dentidesk.com/",
+      "https://www.doctocliq.com/",
+      "https://dricloud.com/",
+      "https://clinic-cloud.com/",
+      "https://www.nubimed.com",
+      "https://www.simplesdental.com/",
+      "https://www.dentaloffice.com.br/",
+      "https://www.nimbo-x.com/",
+      "https://www.opendental.com/",
+      "https://www.curvedental.com",
+      "https://carestack.com",
+      "https://www.dentrix.com",
+      "https://www.fresha.com/pricing",
+      "https://simplybook.me/en",
+      "https://dentiqa.app/ar",
+      "https://gestiondental.org/software-dental"
+    ],
+    "sources_fetched_at": "2026-10-01",
+    "usuarios": [
+      "Paciente: reserva sin llamar",
+      "Odontólogo: ve su agenda",
+      "Secretaria: gestiona todo",
+      "Escala multi-odontólogo día 1"
+    ]
+  },
+  "owner": "active-orchestrator",
+  "step": "done",
+  "version": 4,
+  "skills": {
+    "recommended": [
+      {
+        "skill": "vercel-react-best-practices",
+        "repo": "vercel-labs/agent-skills",
+        "installs": "761.7K",
+        "why": "Reglas performance React para portal reserva publica + agenda SPA mobile-first (Vite+TS)."
+      },
+      {
+        "skill": "frontend-design",
+        "repo": "anthropics/skills",
+        "installs": "942.4K",
+        "why": "Patrones UI frontend para vistas dia/semana por odontologo usables por secretaria."
+      },
+      {
+        "skill": "web-design-guidelines",
+        "repo": "vercel-labs/agent-skills",
+        "installs": "688.2K",
+        "why": "Guia diseno web responsive para reserva desde telefono (mobile-first)."
+      },
+      {
+        "skill": "shadcn",
+        "repo": "shadcn/ui",
+        "installs": "271.7K",
+        "why": "Componentes calendario/dialog/form para agenda interna y portal publico en React."
+      },
+      {
+        "skill": "fastapi",
+        "repo": "fastapi/fastapi (oficial)",
+        "installs": "7.0K",
+        "why": "Best practices oficiales FastAPI async + Pydantic v2 para API turnos/disponibilidad/reserva."
+      },
+      {
+        "skill": "supabase-postgres-best-practices",
+        "repo": "supabase/agent-skills",
+        "installs": "425.5K",
+        "why": "Modelado Postgres con constraints/indices para no-superposicion por odontologo y huecos reales."
+      },
+      {
+        "skill": "test-driven-development",
+        "repo": "obra/superpowers",
+        "installs": "n/d (ecosistema 250K+ tier)",
+        "why": "Loop RED-GREEN-REFACTOR exigido por Strict TDD del proyecto (C-02 a C-10)."
+      },
+      {
+        "skill": "webapp-testing",
+        "repo": "anthropics/skills",
+        "installs": "149.2K",
+        "why": "E2E con Playwright Python + manejo de servidores para flujo reserva/cancelacion/reprogramacion."
+      },
+      {
+        "skill": "docker-skills",
+        "repo": "full-stack-skills/docker-skills",
+        "installs": "954 (caution: <1K)",
+        "why": "Compose Postgres16+Redis7+API+Vite con healthchecks; verificar antes de usar por bajo conteo."
+      }
+    ],
+    "installed": [
+      "vercel-labs/agent-skills@vercel-react-best-practices",
+      "anthropics/skills@frontend-design",
+      "vercel-labs/agent-skills@web-design-guidelines",
+      "shadcn/ui@shadcn",
+      "fastapi/fastapi@fastapi",
+      "supabase/agent-skills@supabase-postgres-best-practices",
+      "obra/superpowers@test-driven-development",
+      "anthropics/skills@webapp-testing",
+      "full-stack-skills/docker-skills"
+    ]
+  },
+  "kb": {
+    "created_by": "kb-creator",
+    "source": "interactive",
+    "discovery": {
+      "problem": "Clinicas odontologicas coordinan turnos por WhatsApp/papel, generando dobles reservas y ausentismo",
+      "system_type": "web_app",
+      "domain": "odontologia",
+      "scale": "team",
+      "stack": "FastAPI + SQLAlchemy + PostgreSQL + Redis + React + TypeScript + Vite + Docker",
+      "needs_infra": true
+    },
+    "files": [
+      "knowledge-base/01_vision_y_objetivos.md",
+      "knowledge-base/02_descripcion_general.md",
+      "knowledge-base/03_actores_y_roles.md",
+      "knowledge-base/04_modelo_de_datos.md",
+      "knowledge-base/05_reglas_de_negocio.md",
+      "knowledge-base/06_funcionalidades.md",
+      "knowledge-base/07_flujos_principales.md",
+      "knowledge-base/08_arquitectura_propuesta.md",
+      "knowledge-base/09_decisiones_y_supuestos.md",
+      "knowledge-base/10_preguntas_abiertas.md",
+      "knowledge-base/README.md"
+    ],
+    "roadmap": {
+      "created_by": "roadmap-generator",
+      "source": "CHANGES.md",
+      "changes": [
+        "C-01",
+        "C-02",
+        "C-03",
+        "C-04",
+        "C-05",
+        "C-06",
+        "C-07",
+        "C-08",
+        "C-09",
+        "C-10",
+        "C-11"
+      ]
+    }
+  },
+  "roadmap": {
+    "created_by": "roadmap-generator",
+    "changes_file": "CHANGES.md",
+    "changes": [
+      "C-01-foundation-setup",
+      "C-02-modelos-core-y-seed",
+      "C-03-auth-jwt-rbac",
+      "C-04-disponibilidad-y-reserva",
+      "C-05-gestion-secretaria-turnos",
+      "C-06-bloqueos-y-agenda",
+      "C-07-autogestion-por-token",
+      "C-08-recordatorios-whatsapp",
+      "C-09-portal-reserva-publica",
+      "C-10-agenda-interna-spa",
+      "C-11-hardening-deploy"
+    ],
+    "critical_path": [
+      "C-01",
+      "C-02",
+      "C-03",
+      "C-04",
+      "C-05",
+      "C-10",
+      "C-11"
+    ],
+    "note": "state.roadmap registrado por orchestrator: sub-agente genero CHANGES.md (306 lineas, 11 changes) pero no persistio su seccion; contenido verificado del arbol"
+  },
+  "registry": {
+    "created_by": "skill-registry",
+    "registry_file": ".atl/skill-registry.md",
+    "skills_indexed": 9,
+    "skills": [
+      "vercel-react-best-practices",
+      "frontend-design",
+      "web-design-guidelines",
+      "shadcn",
+      "fastapi",
+      "supabase-postgres-best-practices",
+      "test-driven-development",
+      "webapp-testing",
+      "docker-skills"
+    ],
+    "conventions": [
+      "CHANGES.md",
+      "README.md",
+      "knowledge-base/",
+      "openspec/"
+    ],
+    "note": "state.skills.installed (9) + familia docker-* resuelta a docker-compose; workflow skills excluidas"
+  },
+  "agents": {
+    "created_by": "agent-instruction",
+    "files": [
+      "AGENTS.md",
+      "CLAUDE.md"
+    ],
+    "reglas_applied": [
+      "pydantic-estricto",
+      "async-correcto",
+      "solape-en-db",
+      "ts-estricto",
+      "no-commit-sin-pedido",
+      "migraciones-versionadas",
+      "wa-async",
+      "sin-datos-reales-pacientes"
+    ]
+  }
+}

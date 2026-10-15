@@ -18,9 +18,6 @@ dist-ssr/
 # Alembic check temporal
 .alembic-check.db
 
-# Estado local del orquestador (no versionado por decisión del proyecto)
-.active-orchestrator-state.json
-
 # Coverage / reportes
 .coverage
 coverage/

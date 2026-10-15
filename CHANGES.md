@@ -136,7 +136,7 @@ Paso │ Agente A (Backend Core)      │ Agente B (Backend Aux)       │ Agent
   - `knowledge-base/03_actores_y_roles.md` §Actores del sistema
 
 ### [C-03] `auth-jwt-rbac`
-- **Estado**: `[ ]` pendiente
+- **Estado**: `[x]` completado (archivado 2026-10-08 → `openspec/changes/archive/2026-10-08-c-03-auth-jwt-rbac/`; spec sincronizada en `openspec/specs/auth/spec.md`)
 - **Scope**: Autenticación JWT + RBAC por rol (matriz de 03)
   - `POST /api/auth/login` — JWT access corto + refresh, rate limiting 5/60s por IP+email
   - `POST /api/auth/refresh` — rotación de refresh token, blacklist del anterior
