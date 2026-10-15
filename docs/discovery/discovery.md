@@ -1,7 +1,7 @@
 # Discovery — turnos-odontología
 
 **Fecha**: 2026-10-01
-**Fuentes investigadas**: 19 sistemas en `discovery/sources/competidores-saas-ar.md` (criterio: solo evidencia pública, sin evidencia = "No evidenciado", fecha consulta 2026-10-01) + verificación fresca 2026-10-01 (DentalSoft AR https://dentalsoft.com.ar, Dentalink +15k clientes/+20 países, AgendaPro caso odontológico Rosario con cancelación 3h, Dentiqa AR https://dentiqa.app/ar con chatbot IA WA y precios ARS, comparativa Gestión Dental 2026-08-10).
+**Fuentes investigadas**: 19 sistemas en `docs/discovery/sources/competidores-saas-ar.md` (criterio: solo evidencia pública, sin evidencia = "No evidenciado", fecha consulta 2026-10-01) + verificación fresca 2026-10-01 (DentalSoft AR https://dentalsoft.com.ar, Dentalink +15k clientes/+20 países, AgendaPro caso odontológico Rosario con cancelación 3h, Dentiqa AR https://dentiqa.app/ar con chatbot IA WA y precios ARS, comparativa Gestión Dental 2026-08-10).
 
 ## 1. Problema que resuelve
 
@@ -29,7 +29,7 @@ secretaria confirmando manualmente cada turno.
 ## 4. Competidores / soluciones existentes
 
 Solución actual: manual (WhatsApp + papel/planilla). Relevamiento exhaustivo
-en `discovery/sources/competidores-saas-ar.md`: tabla comparativa de 19
+en `docs/discovery/sources/competidores-saas-ar.md`: tabla comparativa de 19
 sistemas ordenados por relevancia AR (secciones A–D: tabla, matriz ponderada
 Turnos25/Clínica20/Integ15/Admin15/Exp10/Seg10/Precio5, análisis competitivo,
 recomendación 5 demos + 3 refs UX + MVP).
