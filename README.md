@@ -1,5 +1,6 @@
 # Turnos Odontología
 
+Integrantes: Agustina Fontagnol, Martina Suarez y Gianella Peña
 Sistema de gestión de turnos para clínica odontológica (monolito modular single-clínica).
 
 ## Stack
