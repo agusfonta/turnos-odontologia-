@@ -1,7 +1,9 @@
 """Dependencias FastAPI de autenticación y RBAC (C-03)."""
 
 import uuid
-from fastapi import Depends, HTTPException, status
+from typing import Annotated
+
+from fastapi import Depends, Header, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 
@@ -52,3 +54,36 @@ def require_role(required_role: str):
 
 require_secretaria = require_role("secretaria")
 require_odontologo = require_role("odontologo")
+
+
+oauth2_scheme_opcional = OAuth2PasswordBearer(tokenUrl="/api/auth/login", auto_error=False)
+
+
+def get_optional_staff(
+    token: Annotated[str | None, Depends(oauth2_scheme_opcional)],
+    authorization: Annotated[str | None, Header()] = None,
+    db: Session = Depends(get_db),
+) -> User | None:
+    """Reserva publica o de secretaria (C-04, design Decision 8).
+
+    Sin header `Authorization` -> `None` (publico). Con header: se reutiliza
+    la validacion de `get_current_user` (401 si invalido/expirado) y se exige
+    rol `secretaria` (403). NUNCA se degrada a publico ante un header presente
+    pero invalido (incluye esquema no Bearer o token vacio, que
+    `auto_error=False` reportaria como `None`).
+    """
+    if token is None:
+        if authorization is None:
+            return None
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not validate credentials",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    user = get_current_user(token, db)
+    if user.rol.value != "secretaria":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Operation not permitted for this role",
+        )
+    return user
