@@ -162,7 +162,7 @@ Paso │ Agente A (Backend Core)      │ Agente B (Backend Aux)       │ Agent
 > Los changes C-05, C-06, C-07 y C-08 pueden proponerse en paralelo una vez archivado C-04. C-09 requiere C-07; C-10 requiere C-05 + C-06.
 
 ### [C-04] `disponibilidad-y-reserva`
-- **Estado**: `[ ]` pendiente
+- **Estado**: `[x]` completado (archivado 2026-10-27 → `openspec/changes/archive/2026-10-27-c-04-disponibilidad-y-reserva/`; specs sincronizadas en `openspec/specs/agenda/spec.md` y `openspec/specs/turnos/spec.md`)
 - **Scope**: Cálculo de huecos + alta de reserva — corazón del MVP (US-001, US-004; Flujo 1)
   - `GET /api/profesionales` — odontólogos activos y especialidades
   - `GET /api/disponibilidad?profesional_id&desde&hasta&tratamiento_id` — huecos calculados con duración del tratamiento o `slot_default_min` (RN-AG-03), excluye turnos ocupados y bloqueos (RN-AG-01, RN-AG-02)
