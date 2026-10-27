@@ -25,3 +25,26 @@ def test_missing_jwt_secret_fails_validation(monkeypatch):
 
     with pytest.raises(ValidationError):
         Settings()
+
+
+def test_disponibilidad_max_dias_default_31(monkeypatch):
+    monkeypatch.delenv("DISPONIBILIDAD_MAX_DIAS", raising=False)
+    from app.core.settings import Settings
+
+    assert Settings().DISPONIBILIDAD_MAX_DIAS == 31
+
+
+@pytest.mark.parametrize("valor", ["0", "-5"])
+def test_disponibilidad_max_dias_no_positivo_rechazado(monkeypatch, valor):
+    monkeypatch.setenv("DISPONIBILIDAD_MAX_DIAS", valor)
+    from app.core.settings import Settings
+
+    with pytest.raises(ValidationError):
+        Settings()
+
+
+def test_disponibilidad_max_dias_override_por_env(monkeypatch):
+    monkeypatch.setenv("DISPONIBILIDAD_MAX_DIAS", "14")
+    from app.core.settings import Settings
+
+    assert Settings().DISPONIBILIDAD_MAX_DIAS == 14

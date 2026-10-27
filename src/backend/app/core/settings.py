@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     WA_PROVIDER_API_KEY: SecretStr = Field(min_length=1)
     CLINIC_TIMEZONE: str = "America/Argentina/Buenos_Aires"
     CANCEL_MIN_HOURS: int = Field(default=24, ge=0)
+    DISPONIBILIDAD_MAX_DIAS: int = Field(default=31, gt=0)
     CORS_ORIGINS: str = "http://localhost:5173,http://127.0.0.1:5173"
 
     @property
