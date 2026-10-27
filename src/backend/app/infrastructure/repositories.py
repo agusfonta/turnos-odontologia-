@@ -6,7 +6,7 @@ Todo `def` (regla dura async).
 
 from typing import Generic, TypeVar, cast
 
-from sqlalchemy import select
+from sqlalchemy import ColumnElement, select
 from sqlalchemy.orm import Session
 
 from app.core.db import Base
@@ -33,13 +33,16 @@ class BaseRepository(Generic[T]):
         limit: int = 100,
         offset: int = 0,
         include_inactive: bool = False,
+        order_by: ColumnElement | None = None,
     ) -> list[T]:
         stmt = select(self._model)
         is_active_col = getattr(self._model, "is_active", None)
         if not include_inactive and is_active_col is not None:
             stmt = stmt.where(is_active_col.is_(True))
         pk = next(iter(self._model.__table__.primary_key.columns.values()))
-        stmt = stmt.order_by(pk).limit(limit).offset(offset)
+        # `order_by` primero; la PK desempata para mantener orden determinista.
+        orden = [pk] if order_by is None else [order_by, pk]
+        stmt = stmt.order_by(*orden).limit(limit).offset(offset)
         return list(self._session.scalars(stmt).all())
 
     def soft_delete(self, entity: T) -> T:

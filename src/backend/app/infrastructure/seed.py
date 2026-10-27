@@ -8,6 +8,7 @@ sintéticos (dominio `example.test`, matrícula de ejemplo).
 """
 
 import logging
+from datetime import time
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -15,7 +16,7 @@ from sqlalchemy.orm import Session
 from app.core.db import SessionLocal
 from app.core.security import hash_password
 from app.core.settings import get_settings
-from app.infrastructure.models import Profesional, Tratamiento, User, UserRole
+from app.infrastructure.models import HorarioProfesional, Profesional, Tratamiento, User, UserRole
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +27,13 @@ SEED_TRATAMIENTOS: tuple[tuple[str, int], ...] = (
     ("Limpieza", 30),
     ("Consulta", 20),
     ("Tratamiento de conducto", 60),
+)
+# Franjas semanales (hora local de la clínica): lunes (0) a viernes (4),
+# mañana y tarde. Datos sintéticos del profesional de ejemplo (C-04).
+SEED_DIAS_HABILES = range(5)
+SEED_FRANJAS: tuple[tuple[time, time], ...] = (
+    (time(9, 0), time(13, 0)),
+    (time(15, 0), time(19, 0)),
 )
 
 
@@ -45,22 +53,38 @@ def run_seed(session: Session) -> dict[str, int]:
             )
         )
 
-    if (
-        session.scalar(
-            select(Profesional).where(
-                Profesional.matricula == SEED_PROFESIONAL_MATRICULA
-            )
+    profesional = session.scalar(
+        select(Profesional).where(Profesional.matricula == SEED_PROFESIONAL_MATRICULA)
+    )
+    if profesional is None:
+        profesional = Profesional(
+            nombre="Dra. Ejemplo",
+            matricula=SEED_PROFESIONAL_MATRICULA,
+            especialidad="Odontología general",
+            slot_default_min=30,
         )
-        is None
-    ):
-        session.add(
-            Profesional(
-                nombre="Dra. Ejemplo",
-                matricula=SEED_PROFESIONAL_MATRICULA,
-                especialidad="Odontología general",
-                slot_default_min=30,
+        session.add(profesional)
+        session.flush()  # asigna el id para las franjas
+
+    for dia in SEED_DIAS_HABILES:
+        for hora_inicio, hora_fin in SEED_FRANJAS:
+            existe = session.scalar(
+                select(HorarioProfesional.id).where(
+                    HorarioProfesional.profesional_id == profesional.id,
+                    HorarioProfesional.dia_semana == dia,
+                    HorarioProfesional.hora_inicio == hora_inicio,
+                    HorarioProfesional.hora_fin == hora_fin,
+                )
             )
-        )
+            if existe is None:
+                session.add(
+                    HorarioProfesional(
+                        profesional_id=profesional.id,
+                        dia_semana=dia,
+                        hora_inicio=hora_inicio,
+                        hora_fin=hora_fin,
+                    )
+                )
 
     for nombre, duracion_min in SEED_TRATAMIENTOS:
         if session.scalar(select(Tratamiento).where(Tratamiento.nombre == nombre)) is None:
@@ -71,6 +95,7 @@ def run_seed(session: Session) -> dict[str, int]:
         "users": session.query(User).count(),
         "profesionales": session.query(Profesional).count(),
         "tratamientos": session.query(Tratamiento).count(),
+        "horarios": session.query(HorarioProfesional).count(),
         "cancel_min_hours": cancel_min_hours,
     }
 
@@ -85,6 +110,7 @@ def main() -> None:
         f"seed ok: users={resultado['users']} "
         f"profesionales={resultado['profesionales']} "
         f"tratamientos={resultado['tratamientos']} "
+        f"horarios={resultado['horarios']} "
         f"CANCEL_MIN_HOURS={resultado['cancel_min_hours']}"
     )
 

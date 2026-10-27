@@ -7,16 +7,24 @@ os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
 os.environ.setdefault("JWT_SECRET", "test-jwt-secret-sintetico")
 os.environ.setdefault("WA_PROVIDER_API_KEY", "test-wa-key-sintetica")
 
+from datetime import time
+
 import pytest
 from sqlalchemy.orm import Session
 
 from app.core.db import Base
 from app.core.security import hash_password
 from app.infrastructure import seed as seed_module
-from app.infrastructure.models import Profesional, Tratamiento, User
+from app.infrastructure.models import HorarioProfesional, Profesional, Tratamiento, User
 from tests.support import require_pg
 
-_SEED_TABLES = (User.__table__, Profesional.__table__, Tratamiento.__table__)
+# Orden de borrado: horario_profesional referencia a profesionales (FK RESTRICT).
+_SEED_TABLES = (
+    HorarioProfesional.__table__,
+    User.__table__,
+    Profesional.__table__,
+    Tratamiento.__table__,
+)
 
 
 @pytest.fixture
@@ -55,6 +63,44 @@ def test_seed_doble_corrida_mismos_conteos(pg_session: Session):
     segundo = _conteos(session)
 
     assert primer == segundo == (1, 1, 3)
+
+
+def _franjas(session: Session) -> list[tuple[int, time, time]]:
+    filas = (
+        session.query(HorarioProfesional)
+        .filter(HorarioProfesional.is_active.is_(True))
+        .order_by(HorarioProfesional.dia_semana, HorarioProfesional.hora_inicio)
+        .all()
+    )
+    return [(f.dia_semana, f.hora_inicio, f.hora_fin) for f in filas]
+
+
+def test_seed_carga_franjas_lunes_a_viernes_del_profesional_ejemplo(pg_session: Session):
+    session = pg_session
+    seed_module.run_seed(session)
+    session.rollback()
+
+    profesional = session.query(Profesional).one()
+    franjas = session.query(HorarioProfesional).all()
+    assert len(franjas) == 10
+    assert {f.profesional_id for f in franjas} == {profesional.id}
+    assert _franjas(session) == [
+        (dia, ini, fin)
+        for dia in range(5)
+        for ini, fin in ((time(9), time(13)), (time(15), time(19)))
+    ]
+
+
+def test_seed_franjas_doble_corrida_sin_duplicados(pg_session: Session):
+    session = pg_session
+    seed_module.run_seed(session)
+    session.rollback()
+    primera = _franjas(session)
+    seed_module.run_seed(session)
+    session.rollback()
+
+    assert session.query(HorarioProfesional).count() == 10
+    assert _franjas(session) == primera
 
 
 def test_seed_respeta_cancel_min_hours_de_settings(monkeypatch, pg_session: Session):
@@ -103,3 +149,11 @@ def test_hash_password_no_devuelve_plano():
     assert hashed != plano
     assert hashed.startswith("$2b$")
     assert hash_password(plano) != hashed  # salt aleatorio
+
+
+def test_seed_sobre_esquema_migrado_respeta_exclusion_de_franjas(mig_session: Session):
+    """Contra la DB de migraciones (con `ex_horario_sin_solape`): el seed no choca."""
+    seed_module.run_seed(mig_session)
+    seed_module.run_seed(mig_session)
+
+    assert mig_session.query(HorarioProfesional).count() == 10
