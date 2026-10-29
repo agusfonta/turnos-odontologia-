@@ -23,20 +23,21 @@ C-01 foundation-setup
   └── C-02 modelos-core-y-seed
         └── C-03 auth-jwt-rbac                    ← desbloquea TODO lo demás
               └── C-04 disponibilidad-y-reserva   ← corazón del MVP
-                    │
-                    ├── C-05 gestion-secretaria-turnos   [Backend Core]
-                    │     │
-                    │     └── C-10 agenda-interna-spa ──┐  (+ C-06)
-                    │                                   │
-                    ├── C-06 bloqueos-y-agenda ─────────┘  [Backend Aux]
-                    │
-                    ├── C-07 autogestion-por-token
-                    │     └── C-09 portal-reserva-publica ─┐  (+ C-04)
-                    │                                      │
-                    └── C-08 recordatorios-whatsapp ───────┤  [Backend Aux]
-                                                          │
-                                                          ▼
-                                              C-11 hardening-deploy
+                    └── C-04b uow-en-reservas         ← patrón UoW para escrituras (refactor)
+                          │
+                          ├── C-05 gestion-secretaria-turnos   [Backend Core]
+                          │     │
+                          │     └── C-10 agenda-interna-spa ──┐  (+ C-06)
+                          │                                   │
+                          ├── C-06 bloqueos-y-agenda ─────────┘  [Backend Aux]
+                          │
+                          ├── C-07 autogestion-por-token
+                          │     └── C-09 portal-reserva-publica ─┐  (+ C-04)
+                          │                                      │
+                          └── C-08 recordatorios-whatsapp ───────┤  [Backend Aux]
+                                                                │
+                                                                ▼
+                                                    C-11 hardening-deploy
 ```
 
 ### Paralelismo por fase
@@ -56,7 +57,10 @@ GATE 2: C-02 ✓
 GATE 3: C-03 ✓
   → C-04 (solo — todo el dominio cuelga de turnos)
 
-GATE 4: C-04 ✓                     ← PRIMER FORK (4 paralelos)
+GATE 3b: C-04 ✓
+  → C-04b uow-en-reservas (solo — define el patrón UoW que copian C-05 y C-07)
+
+GATE 4: C-04 + C-04b ✓             ← PRIMER FORK (4 paralelos)
   → C-05 gestion-secretaria-turnos  [Agente A]
   → C-06 bloqueos-y-agenda          [Agente B]
   → C-07 autogestion-por-token      [Agente A — si C-05 ✓]
@@ -70,13 +74,13 @@ GATE 6: C-08 + C-09 + C-10 ✓
   → C-11 hardening-deploy           [Agente A]
 ```
 
-### Camino crítico (7 changes — mínimo irreducible)
+### Camino crítico (8 changes — mínimo irreducible)
 
 ```
-C-01 → C-02 → C-03 → C-04 → C-05 → C-10 → C-11
+C-01 → C-02 → C-03 → C-04 → C-04b → C-05 → C-10 → C-11
 ```
 
-> Rama alternativa de igual longitud: `C-04 → C-07 → C-09 → C-11` (portal público en vez de agenda interna).
+> Rama alternativa de igual longitud: `C-04 → C-04b → C-07 → C-09 → C-11` (portal público en vez de agenda interna).
 
 ### Plan óptimo con 3 agentes
 
@@ -87,6 +91,7 @@ Paso │ Agente A (Backend Core)      │ Agente B (Backend Aux)       │ Agent
   2  │ C-02 modelos-core-y-seed     │              —               │         —
   3  │ C-03 auth-jwt-rbac           │              —               │         —
   4  │ C-04 disponibilidad-y-reserva│              —               │         —
+  4b │ C-04b uow-en-reservas        │              —               │         —
   5  │ C-05 gestion-secretaria      │ C-06 bloqueos-y-agenda       │         —
   6  │ C-07 autogestion-por-token   │ C-08 recordatorios-whatsapp  │         —
   7  │              —               │ C-10 agenda-interna-spa      │ C-09 portal-reserva
@@ -159,7 +164,7 @@ Paso │ Agente A (Backend Core)      │ Agente B (Backend Aux)       │ Agent
 
 ## FASE 2 — Dominio de turnos (backend)
 
-> Los changes C-05, C-06, C-07 y C-08 pueden proponerse en paralelo una vez archivado C-04. C-09 requiere C-07; C-10 requiere C-05 + C-06.
+> Los changes C-05, C-06, C-07 y C-08 pueden proponerse en paralelo una vez archivados C-04 y C-04b. C-09 requiere C-07; C-10 requiere C-05 + C-06.
 
 ### [C-04] `disponibilidad-y-reserva`
 - **Estado**: `[x]` completado (archivado 2026-10-27 → `openspec/changes/archive/2026-10-27-c-04-disponibilidad-y-reserva/`; specs sincronizadas en `openspec/specs/agenda/spec.md` y `openspec/specs/turnos/spec.md`)
@@ -180,6 +185,20 @@ Paso │ Agente A (Backend Core)      │ Agente B (Backend Aux)       │ Agent
   - `knowledge-base/06_funcionalidades.md` §US-001, §US-004
   - `knowledge-base/07_flujos_principales.md` §Flujo 1: Reserva online
 
+### [C-04b] `uow-en-reservas`
+- **Estado**: `[x]` completado (archivado 2026-10-29 → `openspec/changes/archive/2026-10-29-c-04b-uow-en-reservas/`; specs sincronizadas en `openspec/specs/turnos/spec.md`)
+- **Scope**: Refactor que preserva comportamiento de `POST /api/turnos`: la reserva escribe vía `UnitOfWork` y sienta el patrón de escrituras para C-05/C-07
+  - El caso de uso recibe una factoría de UoW (`get_uow_factory`), nunca llama `commit`/`rollback` y devuelve un DTO (`TurnoReservado`), no entidades ORM
+  - Huecos del 409 releídos en una UoW nueva tras cerrar la transacción fallida (23P01 vía `flush()` explícito; `ex_turnos_sin_solape` no es diferible)
+  - Encolado del recordatorio en el router, estrictamente después del commit
+  - Guardas: chequeo AST (sin `commit`/`rollback` en `app/application` y `app/api`), orden commit→encolado, atomicidad ante commit fallido, carrera con huecos actualizados
+  - Sin cambio de contrato HTTP y sin migración de DB (alembic sigue en 002)
+- **Dependencias**: C-04
+- **Governance**: CRITICO
+- **Leer antes**:
+  - `openspec/changes/c-04b-uow-en-reservas/design.md` (D1–D6)
+  - Decision 7 del C-04 archivado (`openspec/changes/archive/2026-10-27-c-04-disponibilidad-y-reserva/design.md`)
+
 ### [C-05] `gestion-secretaria-turnos`
 - **Estado**: `[ ]` pendiente
 - **Scope**: Alta manual, mover y cancelar por secretaria (US-005 parcial, US-006; Flujo 2)
@@ -189,7 +208,7 @@ Paso │ Agente A (Backend Core)      │ Agente B (Backend Aux)       │ Agent
   - Sobreturno solo con marca explícita + rol secretaria + auditoría (RN-AG-04); solape sin marca → 409; reprogramación fuera de anticipación → 422
   - Toda operación genera `AuditoriaTurno` (RN-GL-01)
   - Tests: sobreturno explícito vs 409, anticipación 422, reprogramación revalida hueco, auditoría por operación
-- **Dependencias**: C-04
+- **Dependencias**: C-04, C-04b
 - **Governance**: MEDIO
 - **Leer antes**:
   - `knowledge-base/06_funcionalidades.md` §US-005, §US-006
@@ -221,7 +240,7 @@ Paso │ Agente A (Backend Core)      │ Agente B (Backend Aux)       │ Agent
   - `DELETE /api/turnos/por-token/{token}` — cancelar con anticipación (RN-TU-01)
   - Token inválido → 404 sin exponer datos; cada operación audita (RN-GL-01)
   - Tests: confirmar/cancelar/reprogramar por token, 404 sin fuga de datos, bloqueo por anticipación, auditoría
-- **Dependencias**: C-04
+- **Dependencias**: C-04, C-04b
 - **Governance**: MEDIO
 - **Leer antes**:
   - `knowledge-base/06_funcionalidades.md` §US-005
