@@ -59,8 +59,8 @@ Cargá la skill correspondiente al contexto ANTES de escribir código.
 
 El plan de implementación completo está en [CHANGES.md](CHANGES.md). Resumen:
 
-- **Total**: 11 changes en 5 fases (Cimientos → Núcleo y acceso → Dominio backend → Notificaciones → Frontend y producción).
-- **Camino crítico** (7): `C-01 → C-02 → C-03 → C-04 → C-05 → C-10 → C-11`.
+- **Total**: 12 changes en 5 fases (Cimientos → Núcleo y acceso → Dominio backend → Notificaciones → Frontend y producción).
+- **Camino crítico** (8): `C-01 → C-02 → C-03 → C-04 → C-04b → C-05 → C-10 → C-11`.
 - **Primer change**: `C-01` (foundation-setup).
 
 **Antes de cualquier `/opsx:propose`**: leé [CHANGES.md](CHANGES.md), identificá las dependencias del change y los archivos de "Leer antes".
