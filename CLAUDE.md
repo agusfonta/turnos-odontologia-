@@ -44,7 +44,7 @@ La fuente de verdad del dominio vive en `knowledge-base/`. **Leé el archivo rel
 
 | Agente | Rol | Skills que carga |
 |--------|-----|------------------|
-| **Backend Core** | FastAPI / Postgres / migraciones | `fastapi`, `supabase-postgres-best-practices`, `test-driven-development` |
+| **Backend Core** | FastAPI / Postgres / migraciones | `fastapi`, `supabase-postgres-best-practices`, `test-driven-development`, `uow-transacciones`, `turno-use-case` |
 | **Backend Aux** | Compose / infra local | `docker-skills` (compose), `test-driven-development` |
 | **Frontend** | React / TS / agenda y portal | `vercel-react-best-practices`, `frontend-design`, `web-design-guidelines`, `shadcn`, `webapp-testing` |
 | **Orquestación** | OPSX / SDD | skills `openspec-*` del stack global |

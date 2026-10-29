@@ -15,8 +15,10 @@
 | Implementing any feature or bugfix, before writing implementation code | test-driven-development | .agents/skills/test-driven-development/SKILL.md |
 | Verifying frontend functionality, debugging UI behavior, browser screenshots, browser logs on local web apps | webapp-testing | .agents/skills/webapp-testing/SKILL.md |
 | docker compose, compose file, multi-container orchestration, Postgres+Redis+API+Vite via compose.yml | docker-skills (compose) | .agents/skills/docker-compose/SKILL.md |
+| Escribir/modificar casos de uso que persisten datos, UnitOfWork, commit/rollback, efectos post-commit (Redis/WhatsApp), IntegrityError/409 por solape, tests de atomicidad | uow-transacciones | .agents/skills/uow-transacciones/SKILL.md |
+| Alta manual, reprogramar, cancelar o confirmar turnos; puertas secretaria (JWT) y token publico; C-05 / C-07 | turno-use-case | .agents/skills/turno-use-case/SKILL.md |
 
-> Source: vendored in `.agents/skills/` (9 skills). Origin refs (state.skills.installed): vercel-labs/agent-skills@vercel-react-best-practices, anthropics/skills@frontend-design, vercel-labs/agent-skills@web-design-guidelines, shadcn/ui@shadcn, fastapi/fastapi@fastapi, supabase/agent-skills@supabase-postgres-best-practices, obra/superpowers@test-driven-development, anthropics/skills@webapp-testing, full-stack-skills/docker-skills (vendored as `docker-compose/`). SDD workflow skills (openspec-*, active-orchestrator, kb-creator, etc.) intentionally skipped.
+> Source: vendored in `.agents/skills/` (11 skills; `uow-transacciones` y `turno-use-case` son project-authored, sin origen externo). Origin refs (state.skills.installed): vercel-labs/agent-skills@vercel-react-best-practices, anthropics/skills@frontend-design, vercel-labs/agent-skills@web-design-guidelines, shadcn/ui@shadcn, fastapi/fastapi@fastapi, supabase/agent-skills@supabase-postgres-best-practices, obra/superpowers@test-driven-development, anthropics/skills@webapp-testing, full-stack-skills/docker-skills (vendored as `docker-compose/`). SDD workflow skills (openspec-*, active-orchestrator, kb-creator, etc.) intentionally skipped.
 
 ## Compact Rules
 
@@ -89,6 +91,28 @@ Pre-digested rules per skill. Delegators copy matching blocks into sub-agent pro
 - Env: .env auto-loaded for ${VAR} substitution; env_file for per-env bulk vars; never commit .env with secrets (gitignore + .env.example placeholders)
 - Multi-env: compose.yml base + compose.override.yml (auto local) / compose.prod.yml (-f explicit); validate with `docker compose config`; modern CLI is `docker compose` (space), not docker-compose
 - Single-container → docker-run skill; Dockerfile authoring → docker-dockerfile; multi-host/scaling → Swarm/K8s (kompose convert), not Compose
+
+### uow-transacciones
+- Casos de uso reciben `uow_factory: UowFactory` (dep `get_uow_factory`) y abren `with uow_factory() as session:`; nunca una Session de `get_db` para escribir
+- NUNCA `commit`/`rollback` en application/ ni api/ (guarda AST en tests/test_transacciones_arquitectura.py); solo el `with` cierra (commit limpio, rollback en excepcion)
+- `flush()` final dentro del `with`; devolver DTO frozen dataclass armado adentro, jamas entidades ORM
+- Efectos externos (Redis, WhatsApp) solo en router/orquestador DESPUES del retorno; fallo de encolado nunca falla el request
+- `try/except IntegrityError` envuelve el `with` completo: sqlstate 23P01 -> 409 via `_conflicto`; otro sqlstate se re-lanza (500). `ex_turnos_sin_solape` no es diferible: salta en el flush
+- Ocupacion de aplicacion = excepcion interna (`_HuecoOcupado`) convertida FUERA del `with`; huecos del 409 se releen en UoW NUEVA, nunca con la sesion fallida
+- Todo `def`; helpers de modulo llamados por nombre (monkeypatch-ables)
+- Tests: `factoria_espia` (orden enter/commit/rollback/close), sin filas tras fallo leido desde OTRA sesion, commit->encolado, Barrier si toca agenda
+- Tocar el UoW o el contrato de `reservar_turno` = CRITICO/HIGH: pedir aprobacion antes de escribir
+
+### turno-use-case
+- Una funcion por operacion en application/ (alta_manual/reprogramar/cancelar/confirmar_turno); routers finos: actor -> caso de uso -> efectos post-commit -> DTO a response_model
+- Dos puertas (secretaria JWT, token publico) al MISMO caso de uso con actor explicito (`AuditoriaActor`); token invalido = mismo 404 que turno inexistente, sin fuga de datos
+- Receta en UN `with`: cargar (404) -> `transicionar` de `turno_estados.py` -> anticipacion con `get_settings().CANCEL_MIN_HOURS` (nunca hardcode) -> revalidar hueco (`es_inicio_valido` + `hay_ocupacion` excluyendo el propio turno) -> timestamptz clinica -> `AuditoriaTurno` -> flush + DTO
+- `confirmar`: solo transicion + auditoria (sin anticipacion ni hueco)
+- Sobreturno solo secretaria con marca explicita (RN-AG-04); la puerta token no crea
+- Errores: solape `HuecoOcupadoError` 409; anticipacion/transicion/inicio 422; inexistente 404; IntegrityError no-23P01 500 (anticipacion/transicion aun sin clase AppError)
+- Redis tras el commit: hoy solo `RecordatorioQueue.encolar` (reprogramar = re-encolar); cancelar (ZREM) falta y debe agregarse con tests
+- Tests: feliz + cada error, auditoria en exito/no en fallo (otra sesion), ambas puertas, Barrier si toca agenda, commit->Redis
+- No restatar reglas: leer knowledge-base/ y openspec/specs/turnos/spec.md; C-05/C-07 MEDIO, cambiar `reservar_turno` CRITICO
 
 ## Project Conventions
 
