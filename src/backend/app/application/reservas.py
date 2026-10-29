@@ -2,8 +2,11 @@
 
 Flujo: validar (404/422) -> chequeo de ocupacion de aplicacion -> insertar
 paciente + turno + auditoria `crear` en UNA transaccion. La garantia bajo
-concurrencia es la exclusion constraint de la DB (sqlstate 23P01), que se
-traduce al mismo 409. Sin locks pesimistas.
+concurrencia es la exclusion constraint de la DB: el turno se inserta con
+`ON CONFLICT ON CONSTRAINT ex_turnos_sin_solape DO NOTHING`
+(`TurnoRepository.insertar_si_no_solapa`), que la usa como arbitro sin el
+deadlock 40P01 que un INSERT comun sufre entre altas solapadas concurrentes;
+"sin fila" -> 409. Un 23P01 (p.ej. en el COMMIT) tambien es 409. Sin locks pesimistas.
 
 Patron para los casos de uso de escritura (C-05, C-07), copiar tal cual:
 
@@ -42,14 +45,12 @@ from app.core.exceptions import (
 from app.core.settings import get_settings
 from app.domain.disponibilidad import es_inicio_valido
 from app.domain.schemas import HuecoPublico, TurnoCreate
-from app.domain.turno_estados import EstadoTurno
 from app.infrastructure.models import (
     AuditoriaActor,
     AuditoriaTurno,
     Paciente,
     Profesional,
     Tratamiento,
-    Turno,
     TurnoOrigen,
 )
 from app.infrastructure.repositories import BaseRepository
@@ -155,22 +156,23 @@ def reservar_turno(
             paciente = Paciente(nombre=datos.paciente_nombre, telefono=datos.paciente_telefono)
             session.add(paciente)
             session.flush()
-            turno = Turno(
+            # La exclusion constraint decide la carrera (ON CONFLICT, sin deadlock 40P01):
+            # None = solape con un turno ya confirmado -> 409 tras el rollback del `with`.
+            turno_id = TurnoRepository(session).insertar_si_no_solapa(
                 profesional_id=datos.profesional_id,
                 paciente_id=paciente.id,
                 tratamiento_id=datos.tratamiento_id,
                 inicio=datos.inicio,
                 fin=fin,
-                estado=EstadoTurno.RESERVADO,
                 origen=origen,
                 token_publico=token_publico,
                 created_by=staff_id,
             )
-            session.add(turno)
-            session.flush()  # aca salta la exclusion constraint si hubo carrera
+            if turno_id is None:
+                raise _HuecoOcupado()
             session.add(
                 AuditoriaTurno(
-                    turno_id=turno.id,
+                    turno_id=turno_id,
                     accion="crear",
                     actor_tipo=AuditoriaActor.SECRETARIA if es_secretaria else AuditoriaActor.PACIENTE,
                     actor_user_id=staff_id,
@@ -179,11 +181,11 @@ def reservar_turno(
             )
             session.flush()  # todo error de datos sale aca, antes del COMMIT de __exit__
             reservado = TurnoReservado(
-                id=turno.id,
-                profesional_id=turno.profesional_id,
-                tratamiento_id=turno.tratamiento_id,
-                inicio=turno.inicio,
-                fin=turno.fin,
+                id=turno_id,
+                profesional_id=datos.profesional_id,
+                tratamiento_id=datos.tratamiento_id,
+                inicio=datos.inicio,
+                fin=fin,
                 origen="secretaria" if es_secretaria else "online",
                 token_publico=token_publico,
             )

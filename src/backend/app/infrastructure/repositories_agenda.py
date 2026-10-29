@@ -10,17 +10,58 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
 from app.domain.disponibilidad import Franja, Ocupado
 from app.domain.turno_estados import EstadoTurno
-from app.infrastructure.models import Bloqueo, HorarioProfesional, Turno
+from app.infrastructure.models import Bloqueo, HorarioProfesional, Turno, TurnoOrigen
 from app.infrastructure.repositories import BaseRepository
+
+EXCLUSION_SIN_SOLAPE = "ex_turnos_sin_solape"
 
 
 class TurnoRepository(BaseRepository[Turno]):
     def __init__(self, session: Session) -> None:
         super().__init__(session, Turno)
+
+    def insertar_si_no_solapa(
+        self,
+        *,
+        profesional_id: uuid.UUID,
+        paciente_id: uuid.UUID,
+        tratamiento_id: int | None,
+        inicio: datetime,
+        fin: datetime,
+        origen: TurnoOrigen,
+        token_publico: str,
+        created_by: uuid.UUID | None,
+    ) -> uuid.UUID | None:
+        """Alta `reservado`; `None` si la exclusion constraint la rechaza por solape.
+
+        `ON CONFLICT ON CONSTRAINT ex_turnos_sin_solape DO NOTHING`: la constraint de la
+        DB sigue decidiendo (es el arbitro), pero via insercion especulativa, que espera a
+        la transaccion rival y NO deadlockea. Un INSERT comun si puede: dos altas
+        solapadas concurrentes insertan su tupla y se esperan mutuamente al verificar la
+        constraint (40P01). Cualquier otra violacion (CHECK, FK, unique) se propaga.
+        """
+        stmt = (
+            pg_insert(Turno)
+            .values(
+                profesional_id=profesional_id,
+                paciente_id=paciente_id,
+                tratamiento_id=tratamiento_id,
+                inicio=inicio,
+                fin=fin,
+                estado=EstadoTurno.RESERVADO,
+                origen=origen,
+                token_publico=token_publico,
+                created_by=created_by,
+            )
+            .on_conflict_do_nothing(constraint=EXCLUSION_SIN_SOLAPE)
+            .returning(Turno.id)
+        )
+        return self._session.execute(stmt).scalar_one_or_none()
 
     def ocupados_en_rango(
         self, profesional_id: uuid.UUID, desde: datetime, hasta: datetime
