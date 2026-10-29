@@ -132,3 +132,73 @@ def snapshot_esquema(engine: sa.Engine) -> dict[str, list[tuple]]:
     }
     with engine.connect() as conn:
         return {k: [tuple(r) for r in conn.execute(sa.text(q))] for k, q in consultas.items()}
+
+
+# --- C-04b: UoW espia (bitacora de enter/commit/rollback/close) ----------------
+
+from collections.abc import Callable
+
+from sqlalchemy.orm import Session
+
+from app.infrastructure.unit_of_work import UnitOfWork
+
+
+class UowEspia(UnitOfWork):
+    """UoW que registra enter/commit/rollback/close en una bitacora compartida.
+
+    `commit_error`: si se pasa, el `commit()` de la sesion lanza esa excepcion
+    (despues de anotarlo) en vez de confirmar; el `rollback`/`close` siguen reales.
+    """
+
+    def __init__(
+        self,
+        bitacora: list[str],
+        session_factory: Callable[[], Session],
+        commit_error: BaseException | None = None,
+    ) -> None:
+        super().__init__(session_factory=session_factory)
+        self._bitacora = bitacora
+        self._commit_error = commit_error
+
+    def __enter__(self) -> Session:
+        self._bitacora.append("enter")
+        session = super().__enter__()
+        original_commit, original_rollback, original_close = (
+            session.commit,
+            session.rollback,
+            session.close,
+        )
+
+        def commit() -> None:
+            self._bitacora.append("commit")
+            if self._commit_error is not None:
+                raise self._commit_error
+            original_commit()
+
+        def rollback() -> None:
+            self._bitacora.append("rollback")
+            original_rollback()
+
+        def close() -> None:
+            self._bitacora.append("close")
+            original_close()
+
+        session.commit, session.rollback, session.close = commit, rollback, close  # type: ignore[method-assign]
+        return session
+
+
+def factoria_espia(
+    engine: sa.Engine,
+    bitacora: list[str],
+    *,
+    commit_error: BaseException | None = None,
+) -> Callable[[], UowEspia]:
+    """Factoria de UoW espia sobre `engine`. `commit_error` aplica solo a la PRIMERA UoW
+    (la de escritura); las siguientes (relectura de huecos) confirman normal."""
+    pendiente = [commit_error]
+
+    def crear() -> UowEspia:
+        error = pendiente.pop(0) if pendiente else None
+        return UowEspia(bitacora, lambda: Session(engine), commit_error=error)
+
+    return crear

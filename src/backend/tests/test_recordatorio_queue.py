@@ -17,6 +17,7 @@ from app.infrastructure.jobs import (
     get_recordatorio_queue,
 )
 from app.infrastructure.models import HorarioProfesional, Profesional, Turno
+from app.infrastructure.unit_of_work import get_uow_factory
 from app.main import app
 
 AHORA = datetime(2030, 3, 1, 12, 0, tzinfo=timezone.utc)
@@ -155,3 +156,31 @@ def test_miembro_es_solo_el_turno_id_sin_datos_personales(fake_redis):
     cola.encolar(turno_id, AHORA + timedelta(days=3))
 
     assert fake_redis.zrange(RECORDATORIOS_KEY, 0, -1) == [str(turno_id)]
+
+
+def test_encola_despues_del_commit(entorno, mig_engine):
+    """C-04b D3: al encolar, el turno ya es visible desde OTRA conexion; orden commit -> encolar."""
+    from tests.support import factoria_espia
+
+    client, prof, _ = entorno
+    bitacora: list[str] = []
+    visto_al_encolar: list[bool] = []
+
+    class ColaEspia:
+        def encolar(self, turno_id, inicio):
+            bitacora.append("encolar")
+            with mig_engine.connect() as otra:  # conexion nueva: solo ve lo confirmado
+                visto_al_encolar.append(
+                    otra.scalar(sa.select(sa.func.count()).select_from(Turno).where(Turno.id == turno_id))
+                    == 1
+                )
+            return True
+
+    app.dependency_overrides[get_uow_factory] = lambda: factoria_espia(mig_engine, bitacora)
+    app.dependency_overrides[get_recordatorio_queue] = lambda: ColaEspia()
+
+    resp = _reservar(client, prof)
+
+    assert resp.status_code == 201
+    assert bitacora == ["enter", "commit", "close", "encolar"]
+    assert visto_al_encolar == [True]

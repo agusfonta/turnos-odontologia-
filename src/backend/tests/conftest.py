@@ -50,6 +50,7 @@ def api_client(mig_engine: sa.Engine) -> Iterator[TestClient]:
 
     from app.core.db import get_db
     from app.infrastructure.jobs import RecordatorioQueue, get_recordatorio_queue
+    from app.infrastructure.unit_of_work import UnitOfWork, get_uow_factory
     from app.main import app
 
     def _get_db() -> Iterator[Session]:
@@ -60,6 +61,10 @@ def api_client(mig_engine: sa.Engine) -> Iterator[TestClient]:
             session.close()
 
     app.dependency_overrides[get_db] = _get_db
+    # C-04b: la reserva escribe via UoW; la factoria apunta a la DB clonada.
+    app.dependency_overrides[get_uow_factory] = lambda: (
+        lambda: UnitOfWork(session_factory=lambda: Session(mig_engine))
+    )
     # Por defecto la cola va a un fakeredis (nunca al Redis real); los tests la pisan si hace falta.
     cola = RecordatorioQueue(fakeredis.FakeRedis(), sleep=lambda _s: None)
     app.dependency_overrides[get_recordatorio_queue] = lambda: cola

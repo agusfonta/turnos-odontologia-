@@ -34,8 +34,16 @@ def prof(api_client, mig_session: Session) -> Profesional:
 
 def _reservar_en_paralelo(prof_id: uuid.UUID, hhmm: str, hilos: int) -> list[int]:
     """Lanza `hilos` POST simultaneos al mismo hueco (Barrier) y devuelve los status."""
+    return _reservar_en_paralelo_con_cuerpos(prof_id, hhmm, hilos)[0]
+
+
+def _reservar_en_paralelo_con_cuerpos(
+    prof_id: uuid.UUID, hhmm: str, hilos: int
+) -> tuple[list[int], list[dict]]:
+    """Igual que `_reservar_en_paralelo` pero devuelve tambien los cuerpos JSON."""
     barrera = threading.Barrier(hilos)
     statuses: list[int] = [0] * hilos
+    cuerpos: list[dict] = [{}] * hilos
     errores: list[BaseException] = []
 
     def trabajar(i: int) -> None:
@@ -52,6 +60,7 @@ def _reservar_en_paralelo(prof_id: uuid.UUID, hhmm: str, hilos: int) -> list[int
                 },
             )
             statuses[i] = resp.status_code
+            cuerpos[i] = resp.json()
         except BaseException as exc:  # noqa: BLE001 - se re-lanza en el hilo principal
             errores.append(exc)
 
@@ -62,7 +71,7 @@ def _reservar_en_paralelo(prof_id: uuid.UUID, hhmm: str, hilos: int) -> list[int
         h.join(timeout=30)
     assert not errores, errores
     assert 0 not in statuses, "un hilo no termino"
-    return statuses
+    return statuses, cuerpos
 
 
 def _cuenta(session: Session, modelo) -> int:
@@ -102,5 +111,24 @@ def test_sin_chequeo_de_aplicacion_la_constraint_sola_garantiza_un_ganador(
         hhmm = f"{9 + i // 2:02d}:{'00' if i % 2 == 0 else '30'}"
         statuses = _reservar_en_paralelo(prof.id, hhmm, hilos=5)
         assert sorted(statuses) == [201, 409, 409, 409, 409], (hhmm, statuses)
+
+    assert _cuenta(mig_session, Turno) == ITERACIONES
+
+
+def test_perdedor_de_la_carrera_recibe_huecos_sin_el_horario_ganado(
+    prof, mig_session: Session, monkeypatch
+):
+    """C-04b: la relectura de huecos (UoW nueva) ve al ganador; el 409 no ofrece el horario disputado."""
+    monkeypatch.setattr("app.application.reservas.hay_ocupacion", lambda *a, **k: False)
+
+    for i in range(ITERACIONES):
+        hhmm = f"{9 + i // 2:02d}:{'00' if i % 2 == 0 else '30'}"
+        statuses, cuerpos = _reservar_en_paralelo_con_cuerpos(prof.id, hhmm, hilos=2)
+        assert sorted(statuses) == [201, 409], (hhmm, statuses)
+        perdedor = cuerpos[statuses.index(409)]
+        assert perdedor["code"] == "hueco_ocupado"
+        ofrecidos = {h["inicio"][11:16] for h in perdedor["huecos"]}
+        assert hhmm not in ofrecidos, (hhmm, ofrecidos)
+        assert ofrecidos, "el dia tiene otros huecos libres"
 
     assert _cuenta(mig_session, Turno) == ITERACIONES

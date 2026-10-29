@@ -62,3 +62,22 @@ def test_ciclo_upgrade_downgrade_upgrade_deja_esquema_identico():
             assert snapshot_esquema(engine) == primero
         finally:
             engine.dispose()
+
+
+def test_ex_turnos_sin_solape_no_es_deferrable():
+    """C-04b D4: la exclusion se evalua en el INSERT (flush), no en el COMMIT."""
+    with db_temporal() as url:
+        assert alembic(url, "upgrade", "head").returncode == 0
+        engine = sa.create_engine(url)
+        try:
+            with engine.connect() as conn:
+                fila = conn.execute(
+                    sa.text(
+                        "SELECT condeferrable, condeferred FROM pg_constraint "
+                        "WHERE conname = 'ex_turnos_sin_solape'"
+                    )
+                ).one()
+            assert fila.condeferrable is False
+            assert fila.condeferred is False
+        finally:
+            engine.dispose()

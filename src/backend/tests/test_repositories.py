@@ -143,3 +143,25 @@ def test_list_paginado_limit_offset(store: tuple[Session, type, object]) -> None
     assert [e.nombre for e in pagina] == _nombres(session, model)[1:3]
     assert len(repo.list(limit=2, offset=0)) == 2
     assert len(repo.list(limit=10, offset=4)) == 1
+
+
+def test_get_uow_factory_devuelve_factoria_de_unit_of_work(
+    store: tuple[Session, type, object],
+) -> None:
+    from app.infrastructure.unit_of_work import get_uow_factory
+
+    session, _model, _factory = store
+    engine = session.get_bind()
+
+    factoria = get_uow_factory()
+
+    assert factoria is UnitOfWork  # por defecto: UnitOfWork sobre SessionLocal
+    uow_a, uow_b = factoria(), factoria()
+    assert uow_a is not uow_b and isinstance(uow_a, UnitOfWork)
+
+    # cada `with` abre una sesion distinta y la deja cerrada al salir
+    uow_a._factory = lambda: Session(engine)
+    uow_b._factory = lambda: Session(engine)
+    with uow_a as s_a, uow_b as s_b:
+        assert s_a is not s_b
+    assert uow_a.session is None and uow_b.session is None
