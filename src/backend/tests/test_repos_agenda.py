@@ -4,7 +4,9 @@ import uuid
 from datetime import datetime, time, timedelta, timezone
 
 import pytest
+import sqlalchemy as sa
 from sqlalchemy import event
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.domain.disponibilidad import Franja
@@ -225,3 +227,70 @@ def test_activas_por_profesional_sin_franjas_devuelve_vacio(ctx):
     session, prof, _, _ = ctx
 
     assert HorarioRepository(session).activas_por_profesional(prof.id) == []
+
+
+# --- alta de turno sin deadlock: INSERT ... ON CONFLICT ON CONSTRAINT ex_turnos_sin_solape DO NOTHING ---
+# Un INSERT comun contra la exclusion constraint puede deadlockear (40P01) con otro INSERT
+# solapado concurrente; la insercion especulativa de ON CONFLICT no (Postgres evita la espera
+# circular). La constraint sigue siendo la garantia: es el arbitro del ON CONFLICT.
+
+
+def _alta(session: Session, prof, pac, ini: int, fin: int):
+    return TurnoRepository(session).insertar_si_no_solapa(
+        profesional_id=prof.id,
+        paciente_id=pac.id,
+        tratamiento_id=None,
+        inicio=_h(ini),
+        fin=_h(fin),
+        origen=TurnoOrigen.ONLINE,
+        token_publico=uuid.uuid4().hex,
+        created_by=None,
+    )
+
+
+def _turnos_de(session: Session, prof) -> list[Turno]:
+    session.expire_all()
+    return list(session.scalars(sa.select(Turno).where(Turno.profesional_id == prof.id)))
+
+
+def test_insertar_si_no_solapa_en_hueco_libre_devuelve_id_y_persiste(ctx):
+    session, prof, _, pac = ctx
+
+    turno_id = _alta(session, prof, pac, 0, 30)
+
+    assert isinstance(turno_id, uuid.UUID)
+    (fila,) = _turnos_de(session, prof)
+    assert fila.id == turno_id
+    assert (fila.inicio, fila.fin, fila.estado, fila.sobreturno) == (
+        _h(0), _h(30), EstadoTurno.RESERVADO, False
+    )
+
+
+def test_insertar_si_no_solapa_ante_solape_devuelve_none_sin_insertar(ctx):
+    session, prof, otro, pac = ctx
+    existente = _alta(session, prof, pac, 0, 30)
+
+    assert _alta(session, prof, pac, 15, 45) is None  # pisa [0, 30)
+    assert [t.id for t in _turnos_de(session, prof)] == [existente]
+    assert _alta(session, otro, pac, 15, 45) is not None  # otro profesional: libre
+
+
+def test_insertar_si_no_solapa_respeta_el_where_de_la_constraint(ctx):
+    session, prof, _, pac = ctx
+    session.add(_turno(prof, pac, 0, 30, estado=EstadoTurno.CANCELADO))
+    session.add(_turno(prof, pac, 30, 60, sobreturno=True))
+    session.flush()
+
+    assert _alta(session, prof, pac, 0, 30) is not None  # el cancelado no ocupa
+    assert _alta(session, prof, pac, 30, 60) is not None  # el sobreturno no ocupa
+    assert len(_turnos_de(session, prof)) == 4
+
+
+def test_insertar_si_no_solapa_no_enmascara_otras_violaciones(ctx):
+    session, prof, _, pac = ctx
+
+    with pytest.raises(IntegrityError) as info:
+        _alta(session, prof, pac, 30, 30)  # fin > inicio (CHECK), no es solape
+
+    assert info.value.orig.sqlstate == "23514"
+    session.rollback()
