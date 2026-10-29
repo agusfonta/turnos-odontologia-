@@ -1,15 +1,32 @@
-"""Caso de uso: reservar un turno (C-04, design Decision 7). Todo `def`.
+"""Caso de uso: reservar un turno (C-04 Decision 7, C-04b UoW). Todo `def`.
 
 Flujo: validar (404/422) -> chequeo de ocupacion de aplicacion -> insertar
-paciente + turno + auditoria `crear` en UNA transaccion -> commit. La garantia
-bajo concurrencia es la exclusion constraint de la DB (sqlstate 23P01), que se
-traduce al mismo 409 tras rollback. El 409 recalcula los huecos FUERA de la
-transaccion fallida. Sin locks pesimistas.
+paciente + turno + auditoria `crear` en UNA transaccion. La garantia bajo
+concurrencia es la exclusion constraint de la DB (sqlstate 23P01), que se
+traduce al mismo 409. Sin locks pesimistas.
+
+Patron para los casos de uso de escritura (C-05, C-07), copiar tal cual:
+
+* Reciben una `uow_factory` (`UowFactory`, dependencia `get_uow_factory`) y abren
+  `with uow_factory() as session:` ADENTRO. NUNCA llaman `commit`/`rollback`: el
+  bloque `with` es el unico dueño de la transaccion (lo vigila
+  `tests/test_transacciones_arquitectura.py`).
+* Hacen un `flush()` final dentro del `with`, para que todo error de datos salga
+  antes del COMMIT de `__exit__`.
+* Devuelven un DTO (dataclass) armado DENTRO del `with`; ninguna entidad ORM
+  cruza el limite de la transaccion.
+* El `try/except IntegrityError` envuelve el `with` completo (cubre tambien un
+  fallo en el COMMIT). Para releer tras un conflicto se abre una UoW NUEVA una vez
+  que la fallida ya hizo rollback y close.
+* Efectos externos (Redis, etc.) los dispara el router DESPUES de que el caso de
+  uso retorno (= ya hubo commit).
 """
 
 import secrets
 import uuid
+from dataclasses import dataclass
 from datetime import datetime, timedelta
+from typing import Literal
 from zoneinfo import ZoneInfo
 
 from sqlalchemy.exc import IntegrityError
@@ -34,7 +51,6 @@ from app.infrastructure.models import (
     Tratamiento,
     Turno,
     TurnoOrigen,
-    User,
 )
 from app.infrastructure.repositories import BaseRepository
 from app.infrastructure.repositories_agenda import (
@@ -42,8 +58,26 @@ from app.infrastructure.repositories_agenda import (
     HorarioRepository,
     TurnoRepository,
 )
+from app.infrastructure.unit_of_work import UowFactory
 
 EXCLUSION_VIOLATION = "23P01"
+
+
+@dataclass(frozen=True, slots=True)
+class TurnoReservado:
+    """DTO de aplicacion: lo que el router necesita, sin entidades ORM."""
+
+    id: uuid.UUID
+    profesional_id: uuid.UUID
+    tratamiento_id: int | None
+    inicio: datetime
+    fin: datetime
+    origen: Literal["online", "secretaria"]
+    token_publico: str
+
+
+class _HuecoOcupado(Exception):
+    """Señal interna: el chequeo de aplicacion vio ocupacion (no sale del modulo)."""
 
 
 def hay_ocupacion(
@@ -78,68 +112,85 @@ def _huecos_actualizados(
 
 
 def _conflicto(
-    session: Session, datos: TurnoCreate, *, ahora: datetime, tz: ZoneInfo
+    uow_factory: UowFactory, datos: TurnoCreate, *, ahora: datetime, tz: ZoneInfo
 ) -> HuecoOcupadoError:
-    session.rollback()  # la transaccion fallida se cierra antes de releer
-    return HuecoOcupadoError(_huecos_actualizados(session, datos, ahora=ahora, tz=tz))
+    """409 con huecos leidos en una UoW NUEVA, cuando la transaccion fallida ya se cerro."""
+    with uow_factory() as lectura:
+        return HuecoOcupadoError(_huecos_actualizados(lectura, datos, ahora=ahora, tz=tz))
 
 
 def reservar_turno(
-    session: Session,
+    uow_factory: UowFactory,
     datos: TurnoCreate,
     *,
-    staff: User | None,
+    staff_id: uuid.UUID | None,
     ahora: datetime,
     tz: ZoneInfo,
-) -> Turno:
-    profesional = BaseRepository(session, Profesional).get(datos.profesional_id)
-    if profesional is None or not profesional.is_active:
-        raise ProfesionalNoEncontradoError()
-    duracion_min = profesional.slot_default_min
-    if datos.tratamiento_id is not None:
-        tratamiento = BaseRepository(session, Tratamiento).get(datos.tratamiento_id)
-        if tratamiento is None or not tratamiento.is_active:
-            raise TratamientoNoEncontradoError()
-        duracion_min = tratamiento.duracion_min
-
-    franjas = HorarioRepository(session).activas_por_profesional(datos.profesional_id)
-    if not es_inicio_valido(datos.inicio, franjas, profesional.slot_default_min, duracion_min, ahora, tz):
-        raise InicioInvalidoError()
-
-    fin = datos.inicio + timedelta(minutes=duracion_min)
-    if hay_ocupacion(session, datos.profesional_id, datos.inicio, fin):
-        raise _conflicto(session, datos, ahora=ahora, tz=tz)
-
-    es_secretaria = staff is not None
+) -> TurnoReservado:
     try:
-        paciente = Paciente(nombre=datos.paciente_nombre, telefono=datos.paciente_telefono)
-        session.add(paciente)
-        session.flush()
-        turno = Turno(
-            profesional_id=datos.profesional_id,
-            paciente_id=paciente.id,
-            tratamiento_id=datos.tratamiento_id,
-            inicio=datos.inicio,
-            fin=fin,
-            estado=EstadoTurno.RESERVADO,
-            origen=TurnoOrigen.SECRETARIA if es_secretaria else TurnoOrigen.ONLINE,
-            token_publico=secrets.token_urlsafe(32),
-            created_by=staff.id if staff else None,
-        )
-        session.add(turno)
-        session.flush()  # aca salta la exclusion constraint si hubo carrera
-        session.add(
-            AuditoriaTurno(
-                turno_id=turno.id,
-                accion="crear",
-                actor_tipo=AuditoriaActor.SECRETARIA if es_secretaria else AuditoriaActor.PACIENTE,
-                actor_user_id=staff.id if staff else None,
-                detalle={"origen": turno.origen.value},
+        with uow_factory() as session:
+            profesional = BaseRepository(session, Profesional).get(datos.profesional_id)
+            if profesional is None or not profesional.is_active:
+                raise ProfesionalNoEncontradoError()
+            duracion_min = profesional.slot_default_min
+            if datos.tratamiento_id is not None:
+                tratamiento = BaseRepository(session, Tratamiento).get(datos.tratamiento_id)
+                if tratamiento is None or not tratamiento.is_active:
+                    raise TratamientoNoEncontradoError()
+                duracion_min = tratamiento.duracion_min
+
+            franjas = HorarioRepository(session).activas_por_profesional(datos.profesional_id)
+            if not es_inicio_valido(
+                datos.inicio, franjas, profesional.slot_default_min, duracion_min, ahora, tz
+            ):
+                raise InicioInvalidoError()
+
+            fin = datos.inicio + timedelta(minutes=duracion_min)
+            if hay_ocupacion(session, datos.profesional_id, datos.inicio, fin):
+                raise _HuecoOcupado()
+
+            es_secretaria = staff_id is not None
+            origen = TurnoOrigen.SECRETARIA if es_secretaria else TurnoOrigen.ONLINE
+            token_publico = secrets.token_urlsafe(32)
+            paciente = Paciente(nombre=datos.paciente_nombre, telefono=datos.paciente_telefono)
+            session.add(paciente)
+            session.flush()
+            turno = Turno(
+                profesional_id=datos.profesional_id,
+                paciente_id=paciente.id,
+                tratamiento_id=datos.tratamiento_id,
+                inicio=datos.inicio,
+                fin=fin,
+                estado=EstadoTurno.RESERVADO,
+                origen=origen,
+                token_publico=token_publico,
+                created_by=staff_id,
             )
-        )
-        session.commit()
+            session.add(turno)
+            session.flush()  # aca salta la exclusion constraint si hubo carrera
+            session.add(
+                AuditoriaTurno(
+                    turno_id=turno.id,
+                    accion="crear",
+                    actor_tipo=AuditoriaActor.SECRETARIA if es_secretaria else AuditoriaActor.PACIENTE,
+                    actor_user_id=staff_id,
+                    detalle={"origen": origen.value},
+                )
+            )
+            session.flush()  # todo error de datos sale aca, antes del COMMIT de __exit__
+            reservado = TurnoReservado(
+                id=turno.id,
+                profesional_id=turno.profesional_id,
+                tratamiento_id=turno.tratamiento_id,
+                inicio=turno.inicio,
+                fin=turno.fin,
+                origen="secretaria" if es_secretaria else "online",
+                token_publico=token_publico,
+            )
     except IntegrityError as exc:
         if getattr(exc.orig, "sqlstate", None) != EXCLUSION_VIOLATION:
             raise  # otra violacion = bug (500), no se enmascara como 409
-        raise _conflicto(session, datos, ahora=ahora, tz=tz) from exc
-    return turno
+        raise _conflicto(uow_factory, datos, ahora=ahora, tz=tz) from exc
+    except _HuecoOcupado:
+        raise _conflicto(uow_factory, datos, ahora=ahora, tz=tz) from None
+    return reservado
