@@ -80,17 +80,21 @@ def en_paralelo(tareas: list[Callable[[TestClient], tuple[int, dict]]]) -> list[
 
 
 def _alta_manual(prof, sec, hhmm: str, i: int, **extra):
+    # Atributos ORM leidos ACA (hilo principal): dentro del hilo, un objeto expirado dispararia un
+    # refresh sobre la Session compartida del test desde dos hilos a la vez (flaky).
+    prof_id, headers = str(prof.id), _headers(sec)
+
     def tarea(client: TestClient):
         resp = client.post(
             "/api/turnos/manual",
             json={
-                "profesional_id": str(prof.id),
+                "profesional_id": prof_id,
                 "inicio": f"{LUNES}T{hhmm}:00-03:00",
                 "paciente_nombre": f"Paciente Sintetico {i}",
                 "paciente_telefono": f"+5491100{i:04d}",  # unico por hilo e iteracion (DD-06 reusa por telefono)
                 **extra,
             },
-            headers=_headers(sec),
+            headers=headers,
         )
         return resp.status_code, resp.json()
 
@@ -98,11 +102,13 @@ def _alta_manual(prof, sec, hhmm: str, i: int, **extra):
 
 
 def _alta_publica(prof, hhmm: str, i: int):
+    prof_id = str(prof.id)  # ver nota en `_alta_manual`
+
     def tarea(client: TestClient):
         resp = client.post(
             "/api/turnos",
             json={
-                "profesional_id": str(prof.id),
+                "profesional_id": prof_id,
                 "inicio": f"{LUNES}T{hhmm}:00-03:00",
                 "paciente_nombre": f"Paciente Publico {i}",
                 "paciente_telefono": f"+54911000020{i:02d}",
@@ -114,11 +120,13 @@ def _alta_publica(prof, hhmm: str, i: int):
 
 
 def _reprogramar(turno, sec, hhmm: str):
+    turno_id, headers = str(turno.id), _headers(sec)  # ver nota en `_alta_manual`
+
     def tarea(client: TestClient):
         resp = client.patch(
-            f"/api/turnos/{turno.id}",
+            f"/api/turnos/{turno_id}",
             json={"inicio": f"{LUNES}T{hhmm}:00-03:00"},
-            headers=_headers(sec),
+            headers=headers,
         )
         return resp.status_code, resp.json()
 
@@ -189,11 +197,13 @@ def test_dos_reprogramaciones_al_mismo_hueco_un_200_un_409(api_client, mig_sessi
         dia = a.inicio.date().isoformat()
         destino = f"{dia}T14:00:00-03:00"
 
+        headers = _headers(sec)  # ver nota en `_alta_manual`
+
         def tarea(turno):
+            turno_id = str(turno.id)
+
             def correr(client: TestClient):
-                r = client.patch(
-                    f"/api/turnos/{turno.id}", json={"inicio": destino}, headers=_headers(sec)
-                )
+                r = client.patch(f"/api/turnos/{turno_id}", json={"inicio": destino}, headers=headers)
                 return r.status_code, r.json()
 
             return correr
@@ -213,12 +223,13 @@ def test_reprogramacion_y_alta_publica_al_mismo_hueco(api_client, mig_session, p
     for it in range(ITERACIONES):
         t = crear_turno(mig_session, prof, "09:00", telefono="+5491100003001", dia=DIAS[it])
         dia = t.inicio.date().isoformat()
+        prof_id, turno_id, headers = str(prof.id), str(t.id), _headers(sec)  # ver `_alta_manual`
 
         def publica(client: TestClient, dia=dia, it=it):
             r = client.post(
                 "/api/turnos",
                 json={
-                    "profesional_id": str(prof.id),
+                    "profesional_id": prof_id,
                     "inicio": f"{dia}T14:00:00-03:00",
                     "paciente_nombre": "Paciente Publico",
                     "paciente_telefono": f"+54911000020{it:02d}",
@@ -226,9 +237,9 @@ def test_reprogramacion_y_alta_publica_al_mismo_hueco(api_client, mig_session, p
             )
             return r.status_code, r.json()
 
-        def mover(client: TestClient, t=t, dia=dia):
+        def mover(client: TestClient, dia=dia):
             r = client.patch(
-                f"/api/turnos/{t.id}", json={"inicio": f"{dia}T14:00:00-03:00"}, headers=_headers(sec)
+                f"/api/turnos/{turno_id}", json={"inicio": f"{dia}T14:00:00-03:00"}, headers=headers
             )
             return r.status_code, r.json()
 
@@ -244,23 +255,24 @@ def test_reprogramacion_y_alta_manual_al_mismo_hueco(api_client, mig_session, pr
     for it in range(ITERACIONES):
         t = crear_turno(mig_session, prof, "09:00", telefono="+5491100003001", dia=DIAS[it])
         dia = t.inicio.date().isoformat()
+        prof_id, turno_id, headers = str(prof.id), str(t.id), _headers(sec)  # ver `_alta_manual`
 
         def manual(client: TestClient, dia=dia, it=it):
             r = client.post(
                 "/api/turnos/manual",
                 json={
-                    "profesional_id": str(prof.id),
+                    "profesional_id": prof_id,
                     "inicio": f"{dia}T14:00:00-03:00",
                     "paciente_nombre": "Paciente Manual",
                     "paciente_telefono": f"+54911000040{it:02d}",
                 },
-                headers=_headers(sec),
+                headers=headers,
             )
             return r.status_code, r.json()
 
-        def mover(client: TestClient, t=t, dia=dia):
+        def mover(client: TestClient, dia=dia):
             r = client.patch(
-                f"/api/turnos/{t.id}", json={"inicio": f"{dia}T14:00:00-03:00"}, headers=_headers(sec)
+                f"/api/turnos/{turno_id}", json={"inicio": f"{dia}T14:00:00-03:00"}, headers=headers
             )
             return r.status_code, r.json()
 
@@ -277,12 +289,16 @@ def test_reprogramaciones_cruzadas_sin_500_ni_solapes(api_client, mig_session, p
         a = crear_turno(mig_session, prof, "10:00", telefono="+5491100003001", dia=dia)
         b = crear_turno(mig_session, prof, "10:30", telefono="+5491100003002", dia=dia)
 
+        headers = _headers(sec)  # ver nota en `_alta_manual`
+
         def cruzar(turno, destino: str):
+            turno_id = str(turno.id)
+
             def correr(client: TestClient):
                 r = client.patch(
-                    f"/api/turnos/{turno.id}",
+                    f"/api/turnos/{turno_id}",
                     json={"inicio": f"{dia}T{destino}:00-03:00"},
-                    headers=_headers(sec),
+                    headers=headers,
                 )
                 return r.status_code, r.json()
 
