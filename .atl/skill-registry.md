@@ -97,7 +97,7 @@ Pre-digested rules per skill. Delegators copy matching blocks into sub-agent pro
 - NUNCA `commit`/`rollback` en application/ ni api/ (guarda AST en tests/test_transacciones_arquitectura.py); solo el `with` cierra (commit limpio, rollback en excepcion)
 - `flush()` final dentro del `with`; devolver DTO frozen dataclass armado adentro, jamas entidades ORM
 - Efectos externos (Redis, WhatsApp) solo en router/orquestador DESPUES del retorno; fallo de encolado nunca falla el request
-- `try/except IntegrityError` envuelve el `with` completo: sqlstate 23P01 -> 409 via `_conflicto`; otro sqlstate se re-lanza (500). `ex_turnos_sin_solape` no es diferible: salta en el flush
+- Alta de turno: TurnoRepository.insertar_si_no_solapa (INSERT ON CONFLICT ON CONSTRAINT ex_turnos_sin_solape DO NOTHING; None => 409; evita deadlock 40P01). UPDATE/reprogramar: sin ON CONFLICT -> advisory lock por profesional (o 40P01 => 409) + 23P01 => 409; otro sqlstate se re-lanza (500). ex_turnos_sin_solape no es diferible
 - Ocupacion de aplicacion = excepcion interna (`_HuecoOcupado`) convertida FUERA del `with`; huecos del 409 se releen en UoW NUEVA, nunca con la sesion fallida
 - Todo `def`; helpers de modulo llamados por nombre (monkeypatch-ables)
 - Tests: `factoria_espia` (orden enter/commit/rollback/close), sin filas tras fallo leido desde OTRA sesion, commit->encolado, Barrier si toca agenda
@@ -109,7 +109,9 @@ Pre-digested rules per skill. Delegators copy matching blocks into sub-agent pro
 - Receta en UN `with`: cargar (404) -> `transicionar` de `turno_estados.py` -> anticipacion con `get_settings().CANCEL_MIN_HOURS` (nunca hardcode) -> revalidar hueco (`es_inicio_valido` + `hay_ocupacion` excluyendo el propio turno) -> timestamptz clinica -> `AuditoriaTurno` -> flush + DTO
 - `confirmar`: solo transicion + auditoria (sin anticipacion ni hueco)
 - Sobreturno solo secretaria con marca explicita (RN-AG-04); la puerta token no crea
-- Errores: solape `HuecoOcupadoError` 409; anticipacion/transicion/inicio 422; inexistente 404; IntegrityError no-23P01 500 (anticipacion/transicion aun sin clase AppError)
+- Errores: solape `HuecoOcupadoError` 409; anticipacion/transicion/inicio 422; inexistente 404; otro sqlstate de IntegrityError 500 (anticipacion/transicion aun sin clase AppError)
+- Alta/reprogramar: ver uow-transacciones (insertar_si_no_solapa; advisory lock por profesional en UPDATE); `hay_ocupacion`/`ocupados_en_rango` necesitan `excluir_turno_id` (C-05)
+- Reglas decididas: secretaria EXENTA de anticipacion minima (RN-TU-01 solo token/paciente; accion auditada); alta manual reusa Paciente por telefono normalizado (crea solo si no existe); reprogramar `confirmado` vuelve a `reservado` y re-encola recordatorio post-commit
 - Redis tras el commit: hoy solo `RecordatorioQueue.encolar` (reprogramar = re-encolar); cancelar (ZREM) falta y debe agregarse con tests
 - Tests: feliz + cada error, auditoria en exito/no en fallo (otra sesion), ambas puertas, Barrier si toca agenda, commit->Redis
 - No restatar reglas: leer knowledge-base/ y openspec/specs/turnos/spec.md; C-05/C-07 MEDIO, cambiar `reservar_turno` CRITICO
@@ -118,7 +120,7 @@ Pre-digested rules per skill. Delegators copy matching blocks into sub-agent pro
 
 | File | Path | Notes |
 |------|------|-------|
-| CHANGES.md | CHANGES.md | Roadmap operativo: 11 changes C-01…C-11, critical path, dependencias |
+| CHANGES.md | CHANGES.md | Roadmap operativo: 12 changes C-01…C-11 + C-04b, critical path, dependencias |
 | README.md | README.md | Intro del proyecto |
 | knowledge-base/ | knowledge-base/ | 10 docs canónicos (visión, actores, datos, reglas, flujos, arquitectura) + README |
 | openspec/ | openspec/ | Fuente de verdad de specs por capacidad + changes activos |

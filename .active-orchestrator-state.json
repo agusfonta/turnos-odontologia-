@@ -260,6 +260,7 @@
         "C-02",
         "C-03",
         "C-04",
+        "C-04b",
         "C-05",
         "C-06",
         "C-07",
@@ -278,6 +279,7 @@
       "C-02-modelos-core-y-seed",
       "C-03-auth-jwt-rbac",
       "C-04-disponibilidad-y-reserva",
+      "C-04b-uow-en-reservas",
       "C-05-gestion-secretaria-turnos",
       "C-06-bloqueos-y-agenda",
       "C-07-autogestion-por-token",
@@ -291,6 +293,7 @@
       "C-02",
       "C-03",
       "C-04",
+      "C-04b",
       "C-05",
       "C-10",
       "C-11"

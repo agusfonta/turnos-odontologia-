@@ -42,11 +42,13 @@ reservado = reservar_turno(uow_factory, datos, staff_id=..., ahora=ahora, tz=tz)
 cola.encolar(reservado.id, reservado.inicio)  # post-commit; nunca lanza
 ```
 
-## 4. Conflictos (23P01) y ocupacion
+## 4. Conflictos (23P01, ON CONFLICT) y ocupacion
 
 - El `try/except IntegrityError` envuelve el `with` COMPLETO (cubre tambien un fallo en el COMMIT).
 - sqlstate `23P01` (exclusion violation) -> 409 via `_conflicto`; cualquier otro sqlstate se re-lanza (500). Nunca enmascarar como 409.
-- La constraint `ex_turnos_sin_solape` NO es diferible: el error aparece en el `flush()` del INSERT/UPDATE, no al commit. Por eso el flush final es obligatorio.
+- La constraint `ex_turnos_sin_solape` NO es diferible: para UPDATE (y como red de seguridad en el alta) el error aparece en el `flush()`, no al commit. Por eso el flush final es obligatorio. En el ALTA el solape llega como fila ausente, no como excepcion (ver abajo).
+- Alta (INSERT de turno): NUNCA un INSERT plano. Usar `TurnoRepository.insertar_si_no_solapa` (`INSERT ... ON CONFLICT ON CONSTRAINT ex_turnos_sin_solape DO NOTHING RETURNING id`). Si devuelve `None` -> `_HuecoOcupado` -> 409 FUERA del `with` (tras el rollback). Motivo: dos INSERT solapados concurrentes sobre una EXCLUDE se bloquean entre si y Postgres aborta uno con deadlock `40P01`; con ON CONFLICT el perdedor espera y recibe DO NOTHING. Postgres solo admite `DO NOTHING` (no `DO UPDATE`) sobre una EXCLUDE. Otras violaciones (CHECK/FK/unique) siguen propagando como `IntegrityError`; `23P01` queda como red de seguridad (p. ej. al COMMIT o en UPDATE).
+- UPDATE (reprogramar): ON CONFLICT NO aplica. Tomar `pg_advisory_xact_lock(hashtext(profesional_id::text))` DENTRO del `with`, ANTES de `hay_ocupacion` (serializa por profesional), y mantener `23P01` -> 409. Si no se usa el lock, mapear tambien sqlstate `40P01` a 409. Test de concurrencia con `threading.Barrier` obligatorio.
 - El chequeo de aplicacion (`hay_ocupacion`) lanza una excepcion interna (`_HuecoOcupado`) que se convierte FUERA del `with`.
 - Los `huecos` del 409 se releen en una UoW NUEVA (`_conflicto`), una vez que la fallida hizo rollback y close. Nunca con la sesion fallida.
 

@@ -20,7 +20,7 @@ Construye sobre `uow-transacciones` (leerla; no se duplica aca: UoW, DTO, efecto
 1. Cargar el turno (404 si no existe / token invalido).
 2. Validar la transicion con `app/domain/turno_estados.py` (`transicionar(actual, nuevo)`; lanza `TransicionInvalidaError`). No inventar otra maquina de estados.
 3. Anticipacion con `get_settings().CANCEL_MIN_HOURS` (nunca hardcode) para reprogramar/cancelar. Quien esta sujeto: ver "Ambiguedades".
-4. Reprogramar: revalidar el nuevo hueco con `es_inicio_valido(...)` + `hay_ocupacion(...)` EXCLUYENDO el propio turno (hoy no hay parametro de exclusion, ver "Ambiguedades").
+4. Reprogramar: revalidar el nuevo hueco con `es_inicio_valido(...)` + `hay_ocupacion(...)` EXCLUYENDO el propio turno (`hay_ocupacion`/`ocupados_en_rango` necesitan un parametro nuevo `excluir_turno_id`, a agregar en C-05 con tests). ANTES de `hay_ocupacion` tomar `pg_advisory_xact_lock(hashtext(profesional_id::text))` (UPDATE no admite ON CONFLICT; el lock serializa por profesional y se libera al terminar la transaccion). Alta manual: usar `TurnoRepository.insertar_si_no_solapa` (None -> 409), ver `uow-transacciones` §4.
 5. Aplicar el cambio con timestamptz (RN-GL-02): `inicio`/`fin` aware; convertir a `ZoneInfo(CLINIC_TIMEZONE)` solo al responder.
 6. Escribir `AuditoriaTurno(turno_id, accion, actor_tipo, actor_user_id, detalle)` en el mismo `with` (RN-GL-01). Es append-only: un fallo posterior la deshace por rollback.
 7. `flush()` final y DTO plano.
@@ -45,7 +45,8 @@ Clases de `app/core/exceptions.py` (handler `AppError` -> `{detail, code, ...ext
 - Inicio invalido: `InicioInvalidoError` -> 422.
 - Inexistente / token invalido: subclase de `NotFoundError` -> 404 identico en ambos casos.
 - Anticipacion insuficiente y transicion invalida: HOY NO HAY clase `AppError` (solo `TransicionInvalidaError(ValueError)` en dominio). Crear subclases 422 (p.ej. `AnticipacionInsuficienteError`, `TransicionNoPermitidaError`) y convertir `TransicionInvalidaError` dentro del caso de uso.
-- `IntegrityError` con sqlstate distinto de 23P01 -> se re-lanza (500).
+- Alta: `insertar_si_no_solapa` devuelve None -> `HuecoOcupadoError` 409. Reprogramar: `23P01` -> 409; si no se usa advisory lock, sqlstate `40P01` (deadlock) tambien -> 409.
+- `IntegrityError` con otro sqlstate -> se re-lanza (500).
 
 ## Tests minimos por operacion
 
@@ -58,12 +59,13 @@ Clases de `app/core/exceptions.py` (handler `AppError` -> `{detail, code, ...ext
 
 ## Ambiguedades a resolver en el propose de C-05/C-07
 
-- TODO RN-TU-01 dice "no se puede cancelar/reprogramar con menos de la anticipacion minima" sin distinguir actor; CHANGES.md C-05 la aplica tambien a la secretaria (DELETE/PATCH) y 03_actores la menciona para el token. Confirmar si la secretaria esta sujeta o exenta; mientras no se decida, aplicar a ambas puertas y parametrizar por actor.
-- TODO `hay_ocupacion`/`TurnoRepository.ocupados_en_rango` no excluyen un turno por id: reprogramar a un hueco que solape con el propio turno daria un falso 409. Agregar parametro de exclusion (repositorio, con tests).
+- DECIDIDO (DD-05) RN-TU-01: la secretaria (JWT staff) esta EXENTA de la anticipacion minima; aplica solo a la puerta paciente/token. La accion queda auditada (`AuditoriaTurno`).
+- DECIDIDO (DD-06) Alta manual: reusar el `Paciente` existente por telefono normalizado; crear solo si no se encuentra.
+- TODO `hay_ocupacion`/`TurnoRepository.ocupados_en_rango` no excluyen un turno por id: agregar `excluir_turno_id` (repositorio, con tests) en C-05; sin eso reprogramar a un hueco que solape con el propio turno daria un falso 409.
 - TODO Sobreturno: hoy solo existe la columna `Turno.sobreturno` (la constraint exime a esos turnos, ver spec). Definir en C-05 el campo de entrada y como se saltea `hay_ocupacion` solo con marca + secretaria.
 - TODO Falta `RecordatorioQueue` cancelar (ZREM); reprogramar = re-`encolar`.
 - TODO Sin clases `AppError` para anticipacion/transicion/turno-no-encontrado. Rutas por token: CHANGES.md C-07 usa `/api/turnos/por-token/{token}`, 03_actores lista `/turnos/{token}/confirmar|cancelar` (rutas de SPA/WhatsApp); alinear.
-- TODO Reprogramar un turno `confirmado`: definir si vuelve a `reservado` (RN-TU-04 no tiene esa transicion) o conserva el estado.
+- DECIDIDO (DD-07) Reprogramar un turno `confirmado`: vuelve a `reservado` (el paciente debe reconfirmar) y el recordatorio se re-encola post-commit. Agregar esa transicion a `turno_estados.py` con tests.
 
 ## Esta skill NO
 
