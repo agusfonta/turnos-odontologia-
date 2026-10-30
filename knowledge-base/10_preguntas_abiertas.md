@@ -19,6 +19,6 @@ datos y el aislamiento están sub-especificados.
 | Alta | ¿Proveedor WhatsApp (Business API directo vs BSP) y quién paga por mensaje? | RN-NO-01, infra | Tech Lead |
 | Media | ¿Duraciones fijas por tratamiento desde v1 o slot único? | US-001, seed | Clínica |
 | Media | ¿Sillones/boxes compartidos entre profesionales? | Modelo de datos | Clínica |
-| Media | ¿Deduplicación de pacientes por teléfono/DNI? | US-004/006 | Equipo técnico |
+| Media | ¿Deduplicación de pacientes por teléfono/DNI? **Resuelta → DD-06** (alta manual reusa por teléfono normalizado) | US-004/006 | Equipo técnico |
 | Baja | ¿Lista de espera automática entra en v1 o post? | Roadmap | Product Owner |
 | Baja | ¿Plazo de lanzamiento y clínica piloto? | Planificación | Product Owner |

@@ -31,6 +31,24 @@ React/TS/Vite.
 **Justificación**: ataca el no-show con el menor costo.
 **Trade-offs aceptados**: sin lista de espera automática ni reprogramación por chat.
 
+### DD-05 — Secretaria exenta de la anticipación mínima (2026-10-30)
+**Decisión**: RN-TU-01 aplica solo al paciente por token; la secretaria (JWT staff) puede cancelar/reprogramar sin anticipación mínima.
+**Contexto**: la secretaria gestiona urgencias y cambios de último momento; RN-TU-01 no distinguía actor.
+**Justificación**: la operación real de la clínica lo requiere; la acción queda auditada (AuditoriaTurno).
+**Trade-offs aceptados**: sin freno de anticipación para el staff; se confía en la auditoría.
+
+### DD-06 — Alta manual reusa Paciente por teléfono normalizado (2026-10-30)
+**Decisión**: al crear un turno a mano se busca el Paciente por teléfono normalizado; solo si no existe se crea.
+**Contexto**: DD-03 aceptó posible duplicación de pacientes; el alta manual es el punto donde se puede evitar.
+**Justificación**: evita duplicados sin exigir DNI ni login.
+**Trade-offs aceptados**: dos personas que comparten teléfono (p. ej. familia) se unifican en un Paciente.
+
+### DD-07 — Reprogramar un turno confirmado lo devuelve a reservado (2026-10-30)
+**Decisión**: reprogramar un turno `confirmado` lo pasa a `reservado` (el paciente debe reconfirmar) y el recordatorio se re-encola post-commit.
+**Contexto**: RN-TU-04 no tenía transición confirmado → reservado ni definía el estado tras reprogramar.
+**Justificación**: la confirmación era para el horario anterior; reconfirmar reduce no-shows.
+**Trade-offs aceptados**: un paso extra para el paciente; requiere agregar la transición a la máquina de estados.
+
 ## Supuestos inferidos
 
 ### SU-01 — Anticipación mínima 24h
