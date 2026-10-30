@@ -1,0 +1,63 @@
+# Tasks: c-06-bloqueos-y-agenda
+
+> Governance **MEDIO**: implementar con checkpoints (al cerrar las secciones 2, 4 y 7, resumen al orquestador con decisiones no obvias). **Precondición**: Open Questions OQ-1..OQ-5 de `design.md` resueltas por el usuario. Estas tasks asumen las recomendaciones (OQ-1 = migración 003 con triggers + `profesionales.user_id`); si OQ-1 se rechaza, re-planificar la sección 2 antes de arrancar (ver `design.md` — Migration Plan 5).
+> El código de `reservar_turno` (CRÍTICO) y de `gestion_turnos.py` **no se modifica**; solo se agregan tests de caracterización de su interacción con el trigger.
+> Strict TDD: RED → GREEN → TRIANGULATE → REFACTOR en cada task; ningún código de producción sin un test rojo previo que falle por la razón esperada; suite completa verde al cerrar cada task. Tests de caracterización que pasan de entrada se validan por **mutación temporal** y se anota en el resumen.
+> Skills: `fastapi`, `supabase-postgres-best-practices`, `test-driven-development`, `uow-transacciones`, `turno-use-case`. Todo `def`. Schemas Pydantic `extra="forbid"` con `response_model`. Datos de tests solo sintéticos.
+> Entorno de tests (desde `src/backend`): `export DATABASE_URL=postgresql+psycopg://test:test@localhost:54329/test TEST_DATABASE_URL=postgresql+psycopg://test:test@localhost:54329/test; ../../.venv/Scripts/python -m pytest -q -rs`.
+> Diseño de referencia: `design.md` D1–D8. Requisitos: `specs/bloqueos`, `specs/agenda`, `specs/core-models`.
+
+## 1. Safety net
+
+- [x] 1.1 Baseline: `pytest` completo en `src/backend` contra PG real; registrar "N tests passing" (esperado 396 passed, 0 skipped). Si algo falla, FRENAR y reportar como falla preexistente. `alembic heads` = `002`.
+
+## 2. Migración 003 (D2, D3)
+
+- [x] 2.1 Columna `profesionales.user_id` (spec core-models). RED: `tests/test_migracion_003.py::test_user_id_unico` (falla: revisión 003 inexistente). GREEN: `alembic/versions/003_bloqueos_sin_turnos_y_profesional_user.py` (a mano, `down_revision="002"`) con columna nullable + FK `ON DELETE RESTRICT` + índice único; `Profesional.user_id` en `models.py`. TRIANGULATE: profesional sin usuario aceptado; dos profesionales sin usuario aceptados (NULLs); FK a usuario inexistente rechazada. REFACTOR en verde.
+- [x] 2.2 Trigger `turnos` → bloqueos (spec "Turno y bloqueo nunca se superponen en la base"). RED: `test_insert_turno_dentro_de_bloqueo_rechazado` por SQL directo (espera `IntegrityError` con sqlstate `23P01`). GREEN: función `turno_sin_bloqueo()` `VOLATILE` + triggers `BEFORE INSERT … WHEN (NEW.estado IN ('reservado','confirmado'))` y `BEFORE UPDATE OF inicio, fin, profesional_id … WHEN (…)` con `pg_advisory_xact_lock(hashtext(NEW.profesional_id::text))`. TRIANGULATE: turno contiguo al bloqueo aceptado; bloqueo inactivo no frena; bloqueo de otro profesional no frena; `UPDATE` que mueve un turno dentro de un bloqueo → 23P01; `UPDATE` de solo `estado` a `cancelado`/`atendido` de un turno (preexistente insertado con triggers deshabilitados en el test) no dispara; `INSERT` de un turno `cancelado` dentro del bloqueo aceptado. REFACTOR en verde.
+- [x] 2.3 Trigger `bloqueos` → turnos. RED: `test_insert_bloqueo_sobre_turno_confirmado_rechazado`. GREEN: función `bloqueo_sin_turnos()` + trigger `BEFORE INSERT OR UPDATE OF desde, hasta, is_active, profesional_id … WHEN (NEW.is_active)`. TRIANGULATE: turno `cancelado` no frena; reactivar (`is_active=true`) un bloqueo sobre un turno `reservado` → 23P01; dar de baja (`is_active=false`) nunca falla; bloqueos superpuestos entre sí aceptados. REFACTOR en verde.
+- [x] 2.4 Verificación previa y reversibilidad. RED: `test_upgrade_aborta_con_datos_inconsistentes` (en la DB de test a `002`, insertar un par turno activo ↔ bloqueo activo superpuesto y correr `upgrade 003` → error, sin triggers creados). GREEN: bloque de verificación en `upgrade()`. TRIANGULATE: `upgrade` → `downgrade 002` → `upgrade` deja el esquema igual y conserva filas de `turnos`/`bloqueos`; `alembic heads` = `003`. REFACTOR: docstring del archivo (invariante, clave del lock = `bloquear_agenda`, por qué `VOLATILE`), tests en verde.
+- [x] 2.5 Misma clave que C-05 y serialización. RED: `test_bloquear_agenda_y_trigger_comparten_lock` (conexión A: `bloquear_agenda(prof)` sin commit; conexión B con `lock_timeout` corto: `INSERT` de turno del mismo profesional → error de lock; otro profesional → no espera). Validar por mutación (clave distinta en el trigger → rojo).
+- [x] 2.6 Caracterización de las vías existentes (sin tocar su código). Tests: `POST /api/turnos` dentro de un bloqueo con `hay_ocupacion` stub a `False` → 409 `hueco_ocupado` (vía trigger, no 500); ídem `POST /api/turnos/manual` y `PATCH /api/turnos/{id}`. Validar por mutación (quitar el trigger → 201/200). Suite C-04/C-04b/C-05 verde sin cambiar aserciones.
+- [x] 2.7 Checkpoint MEDIO: resumen al orquestador (SQL de la 003, decisiones del trigger). Suite completa verde.
+
+## 3. Dominio puro y schemas
+
+- [x] 3.1 Rango de agenda (D6). RED: `tests/test_agenda_dominio.py::test_semana_de_un_miercoles` sobre `app/domain/agenda.py::rango_agenda`. GREEN mínimo. TRIANGULATE: `vista=dia` → `(dia, dia)`; lunes → misma semana; domingo → lunes anterior; cambio de año; `limites_instantes` en `America/Argentina/Buenos_Aires` da `[00:00-03:00, día+1 00:00-03:00)`; con una zona con DST (p. ej. `America/Santiago`) el límite sigue en 00:00 local. REFACTOR en verde.
+- [x] 3.2 Schemas (D5, D6). RED: `tests/test_schemas_bloqueos_agenda.py`: `BloqueoCreate` rechaza `hasta <= desde`, instante naive, `motivo` vacío/espacios/201 caracteres, campos extra; acepta 200 caracteres y recorta espacios. GREEN en `app/domain/schemas.py`. TRIANGULATE: `BloqueoOut`, `AgendaOut`, `AgendaTurnoOut` (5 estados, `tratamiento` nulo, sin `token_publico`, rechaza extra), `AgendaBloqueoOut`. REFACTOR en verde.
+- [x] 3.3 Errores nuevos (D7). RED en `tests/test_exceptions.py`: `BloqueoNoEncontradoError` (404, es `NotFoundError`), `BloqueoConTurnosError` (409, `extra()` con `turnos` en ISO con offset), `SinProfesionalAsociadoError` (403), `AgendaAjenaError` (403), `ProfesionalRequeridoError` (422) a través del handler. GREEN en `app/core/exceptions.py`. REFACTOR en verde.
+
+## 4. Repositorios y casos de uso de bloqueos
+
+- [x] 4.1 Repositorio (D4). RED: `tests/test_repos_agenda.py::test_turnos_activos_en_rango_solo_reservado_y_confirmado`. GREEN: `BloqueoRepository.turnos_activos_en_rango` (id, inicio, fin, estado; semiabierto; orden por inicio), `BloqueoRepository.obtener_activo_para_actualizar` (`FOR UPDATE`, `is_active`), `BloqueoRepository.activos_en_rango` (para agenda). TRIANGULATE: contiguo no cuenta; otro profesional no cuenta; inactivo no se devuelve en `obtener_activo_para_actualizar`; `ocupados_en_rango` existente sin cambios. REFACTOR en verde.
+- [x] 4.2 `crear_bloqueo` (D4, D5). RED: `tests/test_bloqueos_uow.py::test_crear_bloqueo_libre`. GREEN: `app/application/bloqueos.py::crear_bloqueo` (validación `desde >= ahora`, profesional activo, `bloquear_agenda`, conflicto, `add` + `flush`, DTO). TRIANGULATE: `desde < ahora` → `RangoInvalidoError`; profesional inexistente/inactivo → 404; turno `reservado` en el rango → `BloqueoConTurnosError` con la lista y sin bloqueo persistido (leído desde otra sesión); stub de `turnos_activos_en_rango` vacío + turno real → 23P01 del trigger → `BloqueoConTurnosError` con turnos releídos en UoW nueva (bitácora `factoria_espia` = `["enter","rollback","close","enter","commit","close"]`); sqlstate `23505` sintético → se propaga. REFACTOR en verde.
+- [x] 4.3 `dar_de_baja_bloqueo` (D4). RED: `test_baja_logica_libera_disponibilidad`. GREEN. TRIANGULATE: inexistente → 404; ya inactivo → 404; `deleted_at = ahora`; la fila sigue existiendo. REFACTOR en verde. Verificar `tests/test_transacciones_arquitectura.py` verde.
+- [x] 4.4 Checkpoint MEDIO: resumen al orquestador.
+
+## 5. API de bloqueos (`app/api/bloqueos.py`)
+
+- [x] 5.1 `POST /api/bloqueos`. RED: `tests/test_api_bloqueos.py::test_crear_201`. GREEN: router con `require_secretaria`, `UowDep`, `AhoraDep`, `response_model=BloqueoOut`, 201, `logger.info` post-retorno; registrar en `main.py`. TRIANGULATE: 401 sin token/inválido; 403 odontólogo (sin filas); 422 por validaciones; 404; 409 `bloqueo_con_turnos` con `turnos`; bloqueos superpuestos → 201; la disponibilidad del día excluye el rango. REFACTOR en verde.
+- [x] 5.2 `DELETE /api/bloqueos/{bloqueo_id}`. RED: `test_baja_200`. GREEN. TRIANGULATE: 401/403; 404 inexistente y ya inactivo; UUID inválido → 422; el hueco reaparece en la disponibilidad. REFACTOR en verde.
+
+## 6. Agenda (`app/application/agenda.py`, `app/api/agenda.py`)
+
+- [x] 6.1 Repositorio de agenda (D6). RED: `test_agenda_en_rango_trae_paciente_y_tratamiento`. GREEN: `TurnoRepository.agenda_en_rango` (una query con `JOIN pacientes` y `LEFT JOIN tratamientos`, intersección, orden `inicio, id`, todos los estados); `ProfesionalRepository.por_user_id`. TRIANGULATE: turno sin tratamiento → nulo; cancelado incluido; turno que cruza el límite del rango incluido; otro profesional excluido; contar sentencias (evento `before_cursor_execute`) = 1 con N turnos (sin N+1). REFACTOR en verde.
+- [x] 6.2 `consultar_agenda` + `require_staff`. RED: `tests/test_api_agenda.py::test_secretaria_vista_dia`. GREEN: caso de uso de lectura (`get_db`, sin commit), dependencia `require_staff` en `deps.py`, router `GET /api/agenda` con `response_model=AgendaOut`; registrar en `main.py`. TRIANGULATE: vista semana (lunes..domingo, excluye la semana siguiente); límites del día en zona de la clínica (23:30 del día anterior excluido); orden por inicio; estados y origen distinguidos; bloqueos activos incluidos e inactivos no; sin `token_publico` en ningún turno; 422 por `dia` faltante/inválido o `vista` inválida; 404 profesional inexistente; profesional inactivo → 200; 401 sin token. REFACTOR en verde.
+- [x] 6.3 Aislamiento por rol (spec "Aislamiento de agenda por rol"). RED: `test_odontologo_ve_solo_su_agenda`. GREEN: resolución de profesional por rol en el router. TRIANGULATE: odontólogo sin `profesional_id` → el propio; con el propio explícito → 200; con uno ajeno → 403 `agenda_ajena` (y con un id inexistente también 403, no 404); sin vínculo → 403 `sin_profesional_asociado`; secretaria sin `profesional_id` → 422 `profesional_requerido`; secretaria con dos profesionales → cada respuesta solo con lo suyo. REFACTOR en verde.
+
+## 7. Concurrencia (`tests/test_bloqueos_concurrencia.py`, `threading.Barrier`, un `TestClient` por hilo)
+
+- [x] 7.1 Bloqueo vs reserva pública (spec "Bloqueo y reserva concurrentes"): `POST /api/bloqueos` + `POST /api/turnos` dentro del rango → exactamente un éxito, un 409, 0×500; consulta final "pares turno activo ↔ bloqueo activo superpuestos" = 0. Variante con los chequeos de aplicación stubbeados (`reservas.hay_ocupacion` → `False`, `turnos_activos_en_rango` → `[]`): el trigger solo decide, mismo resultado. Validar por mutación (quitar el `pg_advisory_xact_lock` del trigger → aparece el doble éxito en la variante stub; anotar).
+- [x] 7.2 Bloqueo vs alta manual y bloqueo vs reprogramación (C-05): mismo criterio (un éxito, un 409, 0×500, 0 pares superpuestos).
+- [x] 7.3 N=5 reservas públicas concurrentes de horarios distintos del mismo profesional + 1 bloqueo que pisa uno solo: 0×500, 0 pares superpuestos. Correr 7.1–7.3 tres veces seguidas sin flakiness.
+- [x] 7.4 Checkpoint MEDIO: resumen al orquestador con resultados de concurrencia.
+
+## 8. Cierre
+
+- [x] 8.1 Docstrings: `bloqueos.py`, `agenda.py` (application y api), migración 003 (invariante y orden de locks). `pytest tests/test_transacciones_arquitectura.py` verde.
+- [x] 8.2 Integración final: `pytest` completo verde con N(baseline) + nuevos; ruff/mypy si están configurados sin errores nuevos; `alembic heads` = `003`; `git diff --stat` sin cambios en `app/application/reservas.py` ni `app/application/gestion_turnos.py`; `rg -n "\.commit\(\)|\.rollback\(\)" src/backend/app/application src/backend/app/api` vacío; `rg -n "async def" src/backend/app/api/bloqueos.py src/backend/app/api/agenda.py src/backend/app/application/bloqueos.py src/backend/app/application/agenda.py` vacío. Registrar la tabla TDD Cycle Evidence. No commitear ni pushear sin pedido explícito.
+
+## Workflow follow-up
+
+- Registrar en `knowledge-base/09_decisiones_y_supuestos.md` las decisiones tomadas en OQ-1..OQ-5 (DD-08 en adelante) y actualizar `CHANGES.md` [C-06] ("Sin migración nueva" → migración 003) si OQ-1 se aprueba.
+- `openspec-verify`, luego `/opsx:archive c-06-bloqueos-y-agenda` (crea spec `bloqueos`, sincroniza `agenda` y `core-models`) y marcar C-06 `[x]` en `CHANGES.md`.

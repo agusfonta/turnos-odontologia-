@@ -217,11 +217,11 @@ Paso │ Agente A (Backend Core)      │ Agente B (Backend Aux)       │ Agent
   - `knowledge-base/04_modelo_de_datos.md` §Turno, §AuditoriaTurno
 
 ### [C-06] `bloqueos-y-agenda`
-- **Estado**: `[ ]` pendiente
+- **Estado**: `[x]` completado (archivado 2026-10-30 → `openspec/changes/archive/2026-10-30-c-06-bloqueos-y-agenda/`; specs sincronizadas en `openspec/specs/bloqueos/spec.md`, `openspec/specs/agenda/spec.md` y `openspec/specs/core-models/spec.md`)
 - **Scope**: Bloqueos de horarios + vistas de agenda interna (US-002, US-003)
   - `POST /api/bloqueos` + `DELETE /api/bloqueos/{id}` — solo secretaria, con motivo; excluyen disponibilidad (RN-AG-02)
   - `GET /api/agenda?profesional_id&dia` — vista día/semana: turnos ordenados con paciente, tratamiento, estado y origen online/secretaria; odontólogo ve solo su agenda (CA US-003)
-  - Sin migración nueva (usa tablas de la migración 002)
+  - Migración 003 (triggers anti-solape turno↔bloqueo + `profesionales.user_id`; ver DD-08 a DD-12 en la KB)
   - Tests: bloqueo excluye huecos, agenda filtra por profesional y rol, distingue estados/origen
 - **Dependencias**: C-04
 - **Governance**: MEDIO
