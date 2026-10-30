@@ -32,25 +32,47 @@ class RecordatorioQueue:
         self._client = client
         self._sleep = sleep
 
-    def encolar(self, turno_id: uuid.UUID, inicio: datetime) -> bool:
-        """ZADD idempotente. Devuelve False (sin lanzar) si Redis falla 3 veces."""
-        score = (inicio - ANTICIPACION_RECORDATORIO).timestamp()
+    def _con_reintento(
+        self, operacion: Callable[[], object], accion: str, turno_id: uuid.UUID
+    ) -> bool:
+        """3 intentos con backoff; `False` (sin lanzar) + warning con `turno_id` si fallan."""
         intentos = len(BACKOFF_SEGUNDOS) + 1
         for intento in range(1, intentos + 1):
             try:
-                self._client.zadd(RECORDATORIOS_KEY, {str(turno_id): score})
+                operacion()
                 return True
             except redis.RedisError as exc:
                 if intento < intentos:
                     self._sleep(BACKOFF_SEGUNDOS[intento - 1])
                 else:
                     logger.warning(
-                        "no se pudo encolar recordatorio turno_id=%s tras %s intentos: %s",
+                        "no se pudo %s recordatorio turno_id=%s tras %s intentos: %s",
+                        accion,
                         turno_id,
                         intentos,
                         exc.__class__.__name__,
                     )
         return False
+
+    def encolar(self, turno_id: uuid.UUID, inicio: datetime) -> bool:
+        """ZADD idempotente (sobre un miembro existente actualiza el score).
+
+        Devuelve False (sin lanzar) si Redis falla 3 veces.
+        """
+        score = (inicio - ANTICIPACION_RECORDATORIO).timestamp()
+        return self._con_reintento(
+            lambda: self._client.zadd(RECORDATORIOS_KEY, {str(turno_id): score}),
+            "encolar",
+            turno_id,
+        )
+
+    def cancelar(self, turno_id: uuid.UUID) -> bool:
+        """ZREM del job (C-05 D10); un turno sin job es exito. Nunca lanza."""
+        return self._con_reintento(
+            lambda: self._client.zrem(RECORDATORIOS_KEY, str(turno_id)),
+            "cancelar",
+            turno_id,
+        )
 
 
 def get_recordatorio_queue() -> RecordatorioQueue:

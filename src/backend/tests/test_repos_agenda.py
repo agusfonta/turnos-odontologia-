@@ -294,3 +294,233 @@ def test_insertar_si_no_solapa_no_enmascara_otras_violaciones(ctx):
 
     assert info.value.orig.sqlstate == "23514"
     session.rollback()
+
+
+# --- C-05 3.2: excluir_turno_id (D5) --------------------------------------------
+
+
+def test_ocupados_en_rango_excluye_el_turno_indicado(ctx):
+    session, prof, _, pac = ctx
+    propio = _turno(prof, pac, 0, 30)
+    ajeno = _turno(prof, pac, 60, 90)
+    session.add_all([propio, ajeno])
+    session.flush()
+    repo = TurnoRepository(session)
+
+    assert repo.ocupados_en_rango(prof.id, DESDE, HASTA, excluir_turno_id=propio.id) == [
+        (_h(60), _h(90))
+    ]
+    assert repo.ocupados_en_rango(prof.id, DESDE, HASTA) == [(_h(0), _h(30)), (_h(60), _h(90))]
+
+
+def test_excluir_un_id_ajeno_no_cambia_el_resultado(ctx):
+    session, prof, _, pac = ctx
+    session.add(_turno(prof, pac, 0, 30))
+    session.flush()
+    repo = TurnoRepository(session)
+
+    assert repo.ocupados_en_rango(
+        prof.id, DESDE, HASTA, excluir_turno_id=uuid.uuid4()
+    ) == repo.ocupados_en_rango(prof.id, DESDE, HASTA)
+
+
+def test_con_dos_turnos_solapados_se_excluye_solo_el_indicado(ctx):
+    session, prof, _, pac = ctx
+    base = _turno(prof, pac, 0, 30)
+    sobre = _turno(prof, pac, 0, 30, sobreturno=True)
+    session.add_all([base, sobre])
+    session.flush()
+
+    assert TurnoRepository(session).ocupados_en_rango(
+        prof.id, DESDE, HASTA, excluir_turno_id=base.id
+    ) == [(_h(0), _h(30))]
+
+
+def test_hay_ocupacion_propaga_excluir_turno_id_solo_a_turnos(ctx):
+    from app.application.reservas import hay_ocupacion
+
+    session, prof, _, pac = ctx
+    propio = _turno(prof, pac, 0, 30)
+    session.add(propio)
+    session.add(Bloqueo(profesional_id=prof.id, desde=_h(60), hasta=_h(90), motivo="x"))
+    session.flush()
+
+    assert hay_ocupacion(session, prof.id, _h(0), _h(30)) is True
+    assert hay_ocupacion(session, prof.id, _h(0), _h(30), excluir_turno_id=propio.id) is False
+    # el bloqueo sigue contando aunque se excluya un turno
+    assert hay_ocupacion(session, prof.id, _h(60), _h(90), excluir_turno_id=propio.id) is True
+
+
+# --- C-05 3.3: insertar_si_no_solapa(sobreturno=...) (D2) -------------------------
+
+
+def _alta_sobre(session: Session, prof, pac, ini: int, fin: int, **kw):
+    return TurnoRepository(session).insertar_si_no_solapa(
+        profesional_id=prof.id,
+        paciente_id=pac.id,
+        tratamiento_id=None,
+        inicio=_h(ini),
+        fin=_h(fin),
+        origen=TurnoOrigen.SECRETARIA,
+        token_publico=uuid.uuid4().hex,
+        created_by=None,
+        **kw,
+    )
+
+
+def test_insertar_sobreturno_coexiste_con_turno_solapado(ctx):
+    session, prof, _, pac = ctx
+    existente = _alta_sobre(session, prof, pac, 0, 30)
+
+    sobre = _alta_sobre(session, prof, pac, 0, 30, sobreturno=True)
+
+    assert sobre is not None and sobre != existente
+    filas = {t.id: t for t in _turnos_de(session, prof)}
+    assert filas[sobre].sobreturno is True and filas[existente].sobreturno is False
+
+
+def test_insertar_sin_marca_sobre_hueco_ocupado_devuelve_none(ctx):
+    session, prof, _, pac = ctx
+    _alta_sobre(session, prof, pac, 0, 30)
+
+    assert _alta_sobre(session, prof, pac, 0, 30) is None
+    assert len(_turnos_de(session, prof)) == 1
+
+
+def test_insertar_por_defecto_persiste_sobreturno_false(ctx):
+    session, prof, _, pac = ctx
+    _alta_sobre(session, prof, pac, 0, 30, sobreturno=False)
+    (fila,) = _turnos_de(session, prof)
+    assert fila.sobreturno is False
+
+
+# --- C-05 3.4: lecturas y lock de agenda (D4) --------------------------------------
+
+
+def _lock_corto(session: Session) -> None:
+    session.execute(sa.text("SET LOCAL lock_timeout = '300ms'"))
+
+
+def test_bloquear_agenda_serializa_por_profesional(ctx):
+    from sqlalchemy.exc import OperationalError
+
+    session, prof, _, _ = ctx
+    engine = session.get_bind()
+    primera, segunda = Session(engine), Session(engine)
+    try:
+        TurnoRepository(primera).bloquear_agenda(prof.id)
+        _lock_corto(segunda)
+        with pytest.raises(OperationalError) as info:
+            TurnoRepository(segunda).bloquear_agenda(prof.id)
+        assert info.value.orig.sqlstate == "55P03"  # lock_not_available
+    finally:
+        segunda.rollback()
+        segunda.close()
+        primera.rollback()
+        primera.close()
+
+
+def test_bloquear_agenda_otro_profesional_no_espera(ctx):
+    session, prof, otro, _ = ctx
+    engine = session.get_bind()
+    primera, segunda = Session(engine), Session(engine)
+    try:
+        TurnoRepository(primera).bloquear_agenda(prof.id)
+        _lock_corto(segunda)
+        TurnoRepository(segunda).bloquear_agenda(otro.id)  # no lanza
+    finally:
+        segunda.rollback()
+        segunda.close()
+        primera.rollback()
+        primera.close()
+
+
+def test_bloquear_agenda_se_libera_al_cerrar_la_transaccion(ctx):
+    session, prof, _, _ = ctx
+    engine = session.get_bind()
+    primera, segunda = Session(engine), Session(engine)
+    try:
+        TurnoRepository(primera).bloquear_agenda(prof.id)
+        primera.commit()  # libera el lock xact
+        _lock_corto(segunda)
+        TurnoRepository(segunda).bloquear_agenda(prof.id)  # no lanza
+    finally:
+        segunda.rollback()
+        segunda.close()
+        primera.close()
+
+
+def test_profesional_de_devuelve_el_profesional_o_none(ctx):
+    session, prof, otro, pac = ctx
+    turno = _turno(otro, pac, 0, 30)
+    session.add(turno)
+    session.flush()
+    repo = TurnoRepository(session)
+
+    assert repo.profesional_de(turno.id) == otro.id
+    assert repo.profesional_de(uuid.uuid4()) is None
+
+
+def test_obtener_para_actualizar_devuelve_el_turno_con_for_update(ctx):
+    session, prof, _, pac = ctx
+    turno = _turno(prof, pac, 0, 30)
+    session.add(turno)
+    session.commit()
+    repo = TurnoRepository(session)
+
+    obtenido = repo.obtener_para_actualizar(turno.id)
+    assert obtenido is not None and obtenido.id == turno.id
+    assert repo.obtener_para_actualizar(uuid.uuid4()) is None
+
+    otra = Session(session.get_bind())
+    try:
+        _lock_corto(otra)
+        with pytest.raises(sa.exc.OperationalError):
+            TurnoRepository(otra).obtener_para_actualizar(turno.id)
+    finally:
+        otra.rollback()
+        otra.close()
+        session.rollback()
+
+
+# --- C-05 3.5: PacienteRepository.buscar_por_telefono (D2) -------------------------
+
+
+def test_buscar_por_telefono_devuelve_el_mas_antiguo(mig_session: Session):
+    from app.infrastructure.repositories import PacienteRepository
+
+    nuevo = Paciente(nombre="Nuevo Sintetico", telefono="+5491100000001")
+    viejo = Paciente(nombre="Viejo Sintetico", telefono="+5491100000001")
+    mig_session.add_all([nuevo, viejo])
+    mig_session.flush()
+    nuevo.created_at = BASE
+    viejo.created_at = BASE - timedelta(days=1)
+    mig_session.flush()
+
+    assert PacienteRepository(mig_session).buscar_por_telefono("+5491100000001").id == viejo.id
+
+
+def test_buscar_por_telefono_sin_pacientes_devuelve_none(mig_session: Session):
+    from app.infrastructure.repositories import PacienteRepository
+
+    mig_session.add(Paciente(nombre="Otro Sintetico", telefono="+5491100000002"))
+    mig_session.flush()
+
+    assert PacienteRepository(mig_session).buscar_por_telefono("+5491100000003") is None
+
+
+def test_buscar_por_telefono_ignora_inactivos(mig_session: Session):
+    from app.infrastructure.repositories import PacienteRepository
+
+    inactivo = Paciente(nombre="Baja Sintetica", telefono="+5491100000004")
+    mig_session.add(inactivo)
+    mig_session.flush()
+    inactivo.soft_delete()
+    mig_session.flush()
+    repo = PacienteRepository(mig_session)
+    assert repo.buscar_por_telefono("+5491100000004") is None
+
+    activo = Paciente(nombre="Alta Sintetica", telefono="+5491100000004")
+    mig_session.add(activo)
+    mig_session.flush()
+    assert repo.buscar_por_telefono("+5491100000004").id == activo.id

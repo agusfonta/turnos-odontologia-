@@ -107,3 +107,47 @@ class TurnoCreado(BaseModel):
     estado: Literal["reservado"]
     origen: Literal["online", "secretaria"]
     token_publico: str
+
+
+# --- Gestion de secretaria (C-05, D9) ---
+
+EstadoTurnoLiteral = Literal["reservado", "confirmado", "cancelado", "atendido", "ausente"]
+
+
+class TurnoManualCreate(TurnoCreate):
+    """Entrada de POST /api/turnos/manual: los campos de `TurnoCreate` + `sobreturno`."""
+
+    sobreturno: bool = False
+
+
+class TurnoReprogramar(BaseModel):
+    """Entrada de PATCH /api/turnos/{id}: solo el nuevo `inicio` (y la marca de sobreturno)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    inicio: AwareDatetime
+    sobreturno: bool = False
+
+
+class TurnoManualCreado(TurnoCreado):
+    """201 del alta manual; conserva `token_publico` (es una creacion)."""
+
+    origen: Literal["secretaria"]  # type: ignore[assignment]
+    paciente_id: uuid.UUID
+    sobreturno: bool
+
+
+class TurnoGestionadoOut(BaseModel):
+    """Respuesta de reprogramar/cancelar. Sin `token_publico`."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: uuid.UUID
+    profesional_id: uuid.UUID
+    paciente_id: uuid.UUID
+    tratamiento_id: int | None
+    inicio: AwareDatetime
+    fin: AwareDatetime
+    estado: EstadoTurnoLiteral
+    origen: Literal["online", "secretaria"]
+    sobreturno: bool

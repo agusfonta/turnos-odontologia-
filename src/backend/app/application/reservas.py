@@ -28,7 +28,7 @@ Patron para los casos de uso de escritura (C-05, C-07), copiar tal cual:
 import secrets
 import uuid
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import Literal
 from zoneinfo import ZoneInfo
 
@@ -82,13 +82,62 @@ class _HuecoOcupado(Exception):
 
 
 def hay_ocupacion(
-    session: Session, profesional_id: uuid.UUID, inicio: datetime, fin: datetime
+    session: Session,
+    profesional_id: uuid.UUID,
+    inicio: datetime,
+    fin: datetime,
+    *,
+    excluir_turno_id: uuid.UUID | None = None,
 ) -> bool:
-    """Chequeo de aplicacion: turno no cancelado o bloqueo activo que pise `[inicio, fin)`."""
+    """Chequeo de aplicacion: turno no cancelado o bloqueo activo que pise `[inicio, fin)`.
+
+    `excluir_turno_id` (C-05) descarta un turno, solo de la rama de turnos.
+    """
     return bool(
-        TurnoRepository(session).ocupados_en_rango(profesional_id, inicio, fin)
+        TurnoRepository(session).ocupados_en_rango(
+            profesional_id, inicio, fin, excluir_turno_id=excluir_turno_id
+        )
         or BloqueoRepository(session).ocupados_en_rango(profesional_id, inicio, fin)
     )
+
+
+def huecos_del_dia(
+    session: Session,
+    profesional_id: uuid.UUID,
+    dia: date,
+    tratamiento_id: int | None,
+    *,
+    ahora: datetime,
+    tz: ZoneInfo,
+) -> list[dict[str, str]]:
+    """Huecos libres del profesional ese dia local, serializados como `HuecoPublico`."""
+    huecos = consultar_disponibilidad(
+        session,
+        profesional_id=profesional_id,
+        desde=dia,
+        hasta=dia,
+        tratamiento_id=tratamiento_id,
+        ahora=ahora,
+        tz=tz,
+        max_dias=get_settings().DISPONIBILIDAD_MAX_DIAS,
+    )
+    return [HuecoPublico.model_validate(h).model_dump(mode="json") for h in huecos]
+
+
+def conflicto_hueco(
+    uow_factory: UowFactory,
+    profesional_id: uuid.UUID,
+    dia: date,
+    tratamiento_id: int | None,
+    *,
+    ahora: datetime,
+    tz: ZoneInfo,
+) -> HuecoOcupadoError:
+    """409 con huecos leidos en una UoW NUEVA, cuando la transaccion fallida ya se cerro."""
+    with uow_factory() as lectura:
+        return HuecoOcupadoError(
+            huecos_del_dia(lectura, profesional_id, dia, tratamiento_id, ahora=ahora, tz=tz)
+        )
 
 
 def _huecos_actualizados(
@@ -98,26 +147,28 @@ def _huecos_actualizados(
     ahora: datetime,
     tz: ZoneInfo,
 ) -> list[dict[str, str]]:
-    dia = datos.inicio.astimezone(tz).date()
-    huecos = consultar_disponibilidad(
+    return huecos_del_dia(
         session,
-        profesional_id=datos.profesional_id,
-        desde=dia,
-        hasta=dia,
-        tratamiento_id=datos.tratamiento_id,
+        datos.profesional_id,
+        datos.inicio.astimezone(tz).date(),
+        datos.tratamiento_id,
         ahora=ahora,
         tz=tz,
-        max_dias=get_settings().DISPONIBILIDAD_MAX_DIAS,
     )
-    return [HuecoPublico.model_validate(h).model_dump(mode="json") for h in huecos]
 
 
 def _conflicto(
     uow_factory: UowFactory, datos: TurnoCreate, *, ahora: datetime, tz: ZoneInfo
 ) -> HuecoOcupadoError:
     """409 con huecos leidos en una UoW NUEVA, cuando la transaccion fallida ya se cerro."""
-    with uow_factory() as lectura:
-        return HuecoOcupadoError(_huecos_actualizados(lectura, datos, ahora=ahora, tz=tz))
+    return conflicto_hueco(
+        uow_factory,
+        datos.profesional_id,
+        datos.inicio.astimezone(tz).date(),
+        datos.tratamiento_id,
+        ahora=ahora,
+        tz=tz,
+    )
 
 
 def reservar_turno(

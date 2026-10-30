@@ -36,6 +36,13 @@ class TratamientoNoEncontradoError(NotFoundError):
         super().__init__(detail)
 
 
+class TurnoNoEncontradoError(NotFoundError):
+    code = "turno_no_encontrado"
+
+    def __init__(self, detail: str = "Turno no encontrado") -> None:
+        super().__init__(detail)
+
+
 class RangoInvalidoError(AppError):
     status_code = 422
     code = "rango_invalido"
@@ -63,6 +70,38 @@ class HuecoOcupadoError(AppError):
 
     def extra(self) -> dict[str, object]:
         return {"huecos": self.huecos}
+
+
+class TransicionNoPermitidaError(AppError):
+    """422: el estado actual del turno no admite la operacion (D8)."""
+
+    status_code = 422
+    code = "transicion_no_permitida"
+
+    def __init__(
+        self, estado_actual: str, detail: str = "La transición de estado no está permitida"
+    ) -> None:
+        super().__init__(detail)
+        self.estado_actual = estado_actual
+
+    def extra(self) -> dict[str, object]:
+        return {"estado_actual": self.estado_actual}
+
+
+class AnticipacionInsuficienteError(AppError):
+    """422: el turno cae dentro de la ventana de anticipacion minima (D7/D8)."""
+
+    status_code = 422
+    code = "anticipacion_insuficiente"
+
+    def __init__(
+        self, min_horas: int, detail: str = "No se cumple la anticipación mínima"
+    ) -> None:
+        super().__init__(detail)
+        self.min_horas = min_horas
+
+    def extra(self) -> dict[str, object]:
+        return {"min_horas": self.min_horas}
 
 
 def app_error_handler(request: Request, exc: AppError) -> JSONResponse:

@@ -33,3 +33,14 @@ def transicionar(actual: EstadoTurno, nuevo: EstadoTurno) -> EstadoTurno:
     if nuevo not in TRANSICIONES[actual]:
         raise TransicionInvalidaError(actual, nuevo)
     return nuevo
+
+
+def estado_tras_reprogramar(actual: EstadoTurno) -> EstadoTurno:
+    """Estado resultante de reprogramar (D6, DD-07): `confirmado` vuelve a `reservado`.
+
+    Regla propia: `TRANSICIONES` no admite `confirmado -> reservado`, asi nadie
+    "desconfirma" un turno sin moverlo.
+    """
+    if actual in (EstadoTurno.RESERVADO, EstadoTurno.CONFIRMADO):
+        return EstadoTurno.RESERVADO
+    raise TransicionInvalidaError(actual, EstadoTurno.RESERVADO)

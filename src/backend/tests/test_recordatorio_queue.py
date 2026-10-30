@@ -184,3 +184,78 @@ def test_encola_despues_del_commit(entorno, mig_engine):
     assert resp.status_code == 201
     assert bitacora == ["enter", "commit", "close", "encolar"]
     assert visto_al_encolar == [True]
+
+
+# --- C-05 3.6: RecordatorioQueue.cancelar (D10) --------------------------------------
+
+
+def test_cancelar_quita_el_job(fake_redis):
+    cola = RecordatorioQueue(fake_redis, sleep=lambda _s: None)
+    turno_id, otro = uuid.uuid4(), uuid.uuid4()
+    cola.encolar(turno_id, AHORA + timedelta(days=3))
+    cola.encolar(otro, AHORA + timedelta(days=4))
+
+    assert cola.cancelar(turno_id) is True
+
+    assert fake_redis.zrange(RECORDATORIOS_KEY, 0, -1) == [str(otro)]
+
+
+def test_cancelar_turno_sin_job_devuelve_true_sin_error(fake_redis):
+    cola = RecordatorioQueue(fake_redis, sleep=lambda _s: None)
+    assert cola.cancelar(uuid.uuid4()) is True
+
+
+def test_cancelar_con_redis_caido_reintenta_loguea_y_no_lanza(caplog):
+    class ZremCaido:
+        def __init__(self) -> None:
+            self.intentos = 0
+
+        def zrem(self, *args, **kwargs):
+            self.intentos += 1
+            raise redis.ConnectionError("caido (simulado)")
+
+    cliente, esperas = ZremCaido(), []
+    cola = RecordatorioQueue(cliente, sleep=esperas.append)
+    turno_id = uuid.uuid4()
+
+    with caplog.at_level(logging.WARNING):
+        assert cola.cancelar(turno_id) is False
+
+    assert cliente.intentos == 3
+    assert esperas == [0.05, 0.1]
+    avisos = [r for r in caplog.records if r.levelno == logging.WARNING]
+    assert any(str(turno_id) in r.getMessage() for r in avisos)
+
+
+def test_cancelar_se_recupera_si_redis_vuelve(fake_redis):
+    class Intermitente:
+        def __init__(self) -> None:
+            self.llamadas = 0
+
+        def zrem(self, *args, **kwargs):
+            self.llamadas += 1
+            if self.llamadas < 2:
+                raise redis.ConnectionError("intermitente")
+            return fake_redis.zrem(*args, **kwargs)
+
+    cola = RecordatorioQueue(Intermitente(), sleep=lambda _s: None)
+    turno_id = uuid.uuid4()
+    RecordatorioQueue(fake_redis).encolar(turno_id, AHORA + timedelta(days=3))
+
+    assert cola.cancelar(turno_id) is True
+    assert fake_redis.zcard(RECORDATORIOS_KEY) == 0
+
+
+def test_encolar_sobre_miembro_existente_actualiza_el_score(fake_redis):
+    """Caracterizacion (D10): re-encolar = mover el score, sin duplicar el miembro."""
+    cola = RecordatorioQueue(fake_redis, sleep=lambda _s: None)
+    turno_id = uuid.uuid4()
+    nuevo_inicio = AHORA + timedelta(days=5)
+
+    cola.encolar(turno_id, AHORA + timedelta(days=3))
+    cola.encolar(turno_id, nuevo_inicio)
+
+    assert fake_redis.zcard(RECORDATORIOS_KEY) == 1
+    assert fake_redis.zscore(RECORDATORIOS_KEY, str(turno_id)) == (
+        nuevo_inicio - timedelta(hours=24)
+    ).timestamp()

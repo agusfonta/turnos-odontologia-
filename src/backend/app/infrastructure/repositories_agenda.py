@@ -9,7 +9,7 @@ Intersección con el rango consultado `[desde, hasta)`: `inicio < hasta AND fin 
 import uuid
 from datetime import datetime
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
@@ -36,6 +36,7 @@ class TurnoRepository(BaseRepository[Turno]):
         origen: TurnoOrigen,
         token_publico: str,
         created_by: uuid.UUID | None,
+        sobreturno: bool = False,
     ) -> uuid.UUID | None:
         """Alta `reservado`; `None` si la exclusion constraint la rechaza por solape.
 
@@ -44,6 +45,9 @@ class TurnoRepository(BaseRepository[Turno]):
         la transaccion rival y NO deadlockea. Un INSERT comun si puede: dos altas
         solapadas concurrentes insertan su tupla y se esperan mutuamente al verificar la
         constraint (40P01). Cualquier otra violacion (CHECK, FK, unique) se propaga.
+
+        `sobreturno=True` deja la fila fuera del WHERE de la constraint (nunca conflictua);
+        el default `False` conserva el comportamiento de la reserva.
         """
         stmt = (
             pg_insert(Turno)
@@ -57,6 +61,7 @@ class TurnoRepository(BaseRepository[Turno]):
                 origen=origen,
                 token_publico=token_publico,
                 created_by=created_by,
+                sobreturno=sobreturno,
             )
             .on_conflict_do_nothing(constraint=EXCLUSION_SIN_SOLAPE)
             .returning(Turno.id)
@@ -64,9 +69,17 @@ class TurnoRepository(BaseRepository[Turno]):
         return self._session.execute(stmt).scalar_one_or_none()
 
     def ocupados_en_rango(
-        self, profesional_id: uuid.UUID, desde: datetime, hasta: datetime
+        self,
+        profesional_id: uuid.UUID,
+        desde: datetime,
+        hasta: datetime,
+        *,
+        excluir_turno_id: uuid.UUID | None = None,
     ) -> list[Ocupado]:
-        """Turnos no cancelados del profesional que intersectan `[desde, hasta)`."""
+        """Turnos no cancelados del profesional que intersectan `[desde, hasta)`.
+
+        `excluir_turno_id` descarta un turno (el que se esta reprogramando).
+        """
         stmt = (
             select(Turno.inicio, Turno.fin)
             .where(
@@ -77,7 +90,34 @@ class TurnoRepository(BaseRepository[Turno]):
             )
             .order_by(Turno.inicio)
         )
+        if excluir_turno_id is not None:
+            stmt = stmt.where(Turno.id != excluir_turno_id)
         return [(inicio, fin) for inicio, fin in self._session.execute(stmt)]
+
+    def bloquear_agenda(self, profesional_id: uuid.UUID) -> None:
+        """Advisory lock transaccional por profesional (C-05 D4).
+
+        Serializa las escrituras de secretaria que ocupan la agenda del profesional;
+        se libera solo al commit/rollback. Una colision de `hashtext` solo serializa de mas.
+        """
+        self._session.execute(
+            text("SELECT pg_advisory_xact_lock(hashtext(:p))"), {"p": str(profesional_id)}
+        )
+
+    def profesional_de(self, turno_id: uuid.UUID) -> uuid.UUID | None:
+        """`profesional_id` del turno sin lockear la fila (`None` si no existe)."""
+        return self._session.execute(
+            select(Turno.profesional_id).where(Turno.id == turno_id)
+        ).scalar_one_or_none()
+
+    def obtener_para_actualizar(self, turno_id: uuid.UUID) -> Turno | None:
+        """`SELECT ... FOR UPDATE` del turno (relee el estado vigente, sin cache de sesion)."""
+        return self._session.execute(
+            select(Turno)
+            .where(Turno.id == turno_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        ).scalar_one_or_none()
 
 
 class BloqueoRepository(BaseRepository[Bloqueo]):

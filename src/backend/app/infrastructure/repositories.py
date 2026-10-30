@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.core.db import Base
 from app.domain.base import AuditMixin
+from app.infrastructure.models import Paciente
 
 T = TypeVar("T", bound=Base)
 
@@ -48,3 +49,18 @@ class BaseRepository(Generic[T]):
     def soft_delete(self, entity: T) -> T:
         cast(AuditMixin, entity).soft_delete()
         return entity
+
+
+class PacienteRepository(BaseRepository[Paciente]):
+    def __init__(self, session: Session) -> None:
+        super().__init__(session, Paciente)
+
+    def buscar_por_telefono(self, telefono: str) -> Paciente | None:
+        """Paciente activo mas antiguo con ese telefono E.164 (DD-06; indice no unico)."""
+        stmt = (
+            select(Paciente)
+            .where(Paciente.telefono == telefono, Paciente.is_active.is_(True))
+            .order_by(Paciente.created_at, Paciente.id)
+            .limit(1)
+        )
+        return self._session.scalars(stmt).first()
