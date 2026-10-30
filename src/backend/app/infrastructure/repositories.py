@@ -4,6 +4,7 @@
 Todo `def` (regla dura async).
 """
 
+import uuid
 from typing import Generic, TypeVar, cast
 
 from sqlalchemy import ColumnElement, select
@@ -11,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.core.db import Base
 from app.domain.base import AuditMixin
-from app.infrastructure.models import Paciente
+from app.infrastructure.models import Paciente, Profesional
 
 T = TypeVar("T", bound=Base)
 
@@ -64,3 +65,14 @@ class PacienteRepository(BaseRepository[Paciente]):
             .limit(1)
         )
         return self._session.scalars(stmt).first()
+
+
+class ProfesionalRepository(BaseRepository[Profesional]):
+    def __init__(self, session: Session) -> None:
+        super().__init__(session, Profesional)
+
+    def por_user_id(self, user_id: uuid.UUID) -> Profesional | None:
+        """Profesional vinculado al usuario (`profesionales.user_id`, unico) o `None` (C-06 D3)."""
+        return self._session.scalars(
+            select(Profesional).where(Profesional.user_id == user_id)
+        ).first()

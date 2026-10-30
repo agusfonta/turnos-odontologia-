@@ -13,9 +13,17 @@ from sqlalchemy import select, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
+from app.domain.agenda import AgendaTurno, TurnoEnConflicto
 from app.domain.disponibilidad import Franja, Ocupado
 from app.domain.turno_estados import EstadoTurno
-from app.infrastructure.models import Bloqueo, HorarioProfesional, Turno, TurnoOrigen
+from app.infrastructure.models import (
+    Bloqueo,
+    HorarioProfesional,
+    Paciente,
+    Tratamiento,
+    Turno,
+    TurnoOrigen,
+)
 from app.infrastructure.repositories import BaseRepository
 
 EXCLUSION_SIN_SOLAPE = "ex_turnos_sin_solape"
@@ -94,6 +102,57 @@ class TurnoRepository(BaseRepository[Turno]):
             stmt = stmt.where(Turno.id != excluir_turno_id)
         return [(inicio, fin) for inicio, fin in self._session.execute(stmt)]
 
+    def agenda_en_rango(
+        self, profesional_id: uuid.UUID, desde: datetime, hasta: datetime
+    ) -> list[AgendaTurno]:
+        """Turnos del profesional (todos los estados) que intersectan `[desde, hasta)` (C-06 D6).
+
+        UNA query: `turnos JOIN pacientes LEFT JOIN tratamientos`; orden `inicio, id`.
+        No selecciona `token_publico`.
+        """
+        stmt = (
+            select(
+                Turno.id,
+                Turno.inicio,
+                Turno.fin,
+                Turno.estado,
+                Turno.origen,
+                Turno.sobreturno,
+                Paciente.id,
+                Paciente.nombre,
+                Paciente.telefono,
+                Tratamiento.id,
+                Tratamiento.nombre,
+            )
+            .join(Paciente, Paciente.id == Turno.paciente_id)
+            .outerjoin(Tratamiento, Tratamiento.id == Turno.tratamiento_id)
+            .where(
+                Turno.profesional_id == profesional_id,
+                Turno.inicio < hasta,
+                Turno.fin > desde,
+            )
+            .order_by(Turno.inicio, Turno.id)
+        )
+        return [
+            AgendaTurno(
+                id=t_id,
+                inicio=ini,
+                fin=fin,
+                estado=estado,
+                origen=origen.value,
+                sobreturno=sobreturno,
+                paciente_id=pac_id,
+                paciente_nombre=pac_nombre,
+                paciente_telefono=pac_tel,
+                tratamiento_id=trat_id,
+                tratamiento_nombre=trat_nombre,
+            )
+            for (
+                t_id, ini, fin, estado, origen, sobreturno,
+                pac_id, pac_nombre, pac_tel, trat_id, trat_nombre,
+            ) in self._session.execute(stmt)
+        ]
+
     def bloquear_agenda(self, profesional_id: uuid.UUID) -> None:
         """Advisory lock transaccional por profesional (C-05 D4).
 
@@ -139,6 +198,53 @@ class BloqueoRepository(BaseRepository[Bloqueo]):
             .order_by(Bloqueo.desde)
         )
         return [(ini, fin) for ini, fin in self._session.execute(stmt)]
+
+    def turnos_activos_en_rango(
+        self, profesional_id: uuid.UUID, desde: datetime, hasta: datetime
+    ) -> list[TurnoEnConflicto]:
+        """Turnos `reservado`/`confirmado` del profesional que intersectan `[desde, hasta)`.
+
+        Los que impiden un bloqueo (C-06 D1). Solo id/rango/estado: sin paciente ni token.
+        """
+        stmt = (
+            select(Turno.id, Turno.inicio, Turno.fin, Turno.estado)
+            .where(
+                Turno.profesional_id == profesional_id,
+                Turno.estado.in_((EstadoTurno.RESERVADO, EstadoTurno.CONFIRMADO)),
+                Turno.inicio < hasta,
+                Turno.fin > desde,
+            )
+            .order_by(Turno.inicio, Turno.id)
+        )
+        return [
+            TurnoEnConflicto(id=i, inicio=ini, fin=fin, estado=estado)
+            for i, ini, fin, estado in self._session.execute(stmt)
+        ]
+
+    def obtener_activo_para_actualizar(self, bloqueo_id: uuid.UUID) -> Bloqueo | None:
+        """`SELECT ... FOR UPDATE` del bloqueo si sigue activo (`None` si no existe o esta de baja)."""
+        return self._session.execute(
+            select(Bloqueo)
+            .where(Bloqueo.id == bloqueo_id, Bloqueo.is_active.is_(True))
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        ).scalar_one_or_none()
+
+    def activos_en_rango(
+        self, profesional_id: uuid.UUID, desde: datetime, hasta: datetime
+    ) -> list[Bloqueo]:
+        """Bloqueos activos del profesional que intersectan `[desde, hasta)` (para la agenda)."""
+        stmt = (
+            select(Bloqueo)
+            .where(
+                Bloqueo.profesional_id == profesional_id,
+                Bloqueo.is_active.is_(True),
+                Bloqueo.desde < hasta,
+                Bloqueo.hasta > desde,
+            )
+            .order_by(Bloqueo.desde, Bloqueo.id)
+        )
+        return list(self._session.scalars(stmt))
 
 
 class HorarioRepository(BaseRepository[HorarioProfesional]):

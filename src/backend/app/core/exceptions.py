@@ -1,7 +1,11 @@
 """Jerarquía AppError + handlers globales (respuesta problem+json consistente)."""
 
+from collections.abc import Sequence
+
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
+
+from app.domain.agenda import TurnoEnConflicto
 
 
 class AppError(Exception):
@@ -102,6 +106,71 @@ class AnticipacionInsuficienteError(AppError):
 
     def extra(self) -> dict[str, object]:
         return {"min_horas": self.min_horas}
+
+
+class BloqueoNoEncontradoError(NotFoundError):
+    code = "bloqueo_no_encontrado"
+
+    def __init__(self, detail: str = "Bloqueo no encontrado") -> None:
+        super().__init__(detail)
+
+
+class BloqueoConTurnosError(AppError):
+    """409: el rango del bloqueo pisa turnos `reservado`/`confirmado` (C-06 D1/D7)."""
+
+    status_code = 409
+    code = "bloqueo_con_turnos"
+
+    def __init__(
+        self,
+        turnos: Sequence[TurnoEnConflicto],
+        detail: str = "El rango del bloqueo tiene turnos activos",
+    ) -> None:
+        super().__init__(detail)
+        self.turnos = list(turnos)
+
+    def extra(self) -> dict[str, object]:
+        return {
+            "turnos": [
+                {
+                    "id": str(t.id),
+                    "inicio": t.inicio.isoformat(),
+                    "fin": t.fin.isoformat(),
+                    "estado": t.estado.value,
+                }
+                for t in self.turnos
+            ]
+        }
+
+
+class SinProfesionalAsociadoError(AppError):
+    """403: el odontologo no tiene profesional vinculado (`profesionales.user_id`)."""
+
+    status_code = 403
+    code = "sin_profesional_asociado"
+
+    def __init__(self, detail: str = "El usuario no tiene un profesional asociado") -> None:
+        super().__init__(detail)
+
+
+class AgendaAjenaError(AppError):
+    """403: un odontologo pidio la agenda de otro profesional (sin consultar si existe)."""
+
+    status_code = 403
+    code = "agenda_ajena"
+
+    def __init__(self, detail: str = "No puede consultar la agenda de otro profesional") -> None:
+        super().__init__(detail)
+
+
+class ProfesionalRequeridoError(AppError):
+    """422: la secretaria debe indicar `profesional_id` (no hay profesional por defecto)."""
+
+    status_code = 422
+    code = "profesional_requerido"
+
+    def __init__(self, detail: str = "Debe indicar el profesional") -> None:
+        super().__init__(detail)
 
 
 def app_error_handler(request: Request, exc: AppError) -> JSONResponse:

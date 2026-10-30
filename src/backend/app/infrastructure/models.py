@@ -64,6 +64,8 @@ class Profesional(Base, AuditMixin):
     __table_args__ = (
         CheckConstraint("slot_default_min > 0", name="ck_profesionales_slot_default_min_pos"),
         Index("ix_profesionales_especialidad", "especialidad"),
+        # C-06 (003): un usuario odontologo <-> un profesional; NULLs repetidos permitidos.
+        Index("uq_profesionales_user_id", "user_id", unique=True),
         Index(
             "ix_profesionales_activos",
             "id",
@@ -76,6 +78,10 @@ class Profesional(Base, AuditMixin):
     matricula: Mapped[str] = mapped_column(String(50), nullable=False, unique=True)
     especialidad: Mapped[str | None] = mapped_column(String(120), nullable=True)
     slot_default_min: Mapped[int] = mapped_column(Integer, nullable=False, default=30)
+    user_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT", name="fk_profesionales_user_id"),
+        nullable=True,
+    )
 
     @property
     def activo(self) -> bool:

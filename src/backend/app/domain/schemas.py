@@ -6,7 +6,9 @@ Espejan las columnas sin campos fantasma. Sin `...` defaults (regla fastapi).
 import uuid
 from typing import Literal
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validator
+from datetime import date
+
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.domain.phone import TelefonoE164
 
@@ -151,3 +153,90 @@ class TurnoGestionadoOut(BaseModel):
     estado: EstadoTurnoLiteral
     origen: Literal["online", "secretaria"]
     sobreturno: bool
+
+
+# --- Bloqueos y agenda (C-06, D5/D6) ---
+
+
+class BloqueoCreate(BaseModel):
+    """Entrada de POST /api/bloqueos. `desde >= ahora` lo valida el caso de uso (reloj inyectado)."""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    profesional_id: uuid.UUID
+    desde: AwareDatetime
+    hasta: AwareDatetime
+    motivo: str = Field(min_length=1, max_length=200)
+
+    @model_validator(mode="after")
+    def _hasta_posterior_a_desde(self) -> "BloqueoCreate":
+        if self.hasta <= self.desde:
+            raise ValueError("hasta debe ser posterior a desde")
+        return self
+
+
+class BloqueoOut(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: uuid.UUID
+    profesional_id: uuid.UUID
+    desde: AwareDatetime
+    hasta: AwareDatetime
+    motivo: str
+
+
+class AgendaProfesionalOut(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: uuid.UUID
+    nombre: str
+
+
+class AgendaPacienteOut(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: uuid.UUID
+    nombre: str
+    telefono: str
+
+
+class AgendaTratamientoOut(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: int
+    nombre: str
+
+
+class AgendaTurnoOut(BaseModel):
+    """Turno de la agenda interna. Sin `token_publico`; incluye `cancelado`."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: uuid.UUID
+    inicio: AwareDatetime
+    fin: AwareDatetime
+    estado: EstadoTurnoLiteral
+    origen: Literal["online", "secretaria"]
+    sobreturno: bool
+    paciente: AgendaPacienteOut
+    tratamiento: AgendaTratamientoOut | None
+
+
+class AgendaBloqueoOut(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: uuid.UUID
+    desde: AwareDatetime
+    hasta: AwareDatetime
+    motivo: str
+
+
+class AgendaOut(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    profesional: AgendaProfesionalOut
+    vista: Literal["dia", "semana"]
+    desde: date
+    hasta: date
+    turnos: list[AgendaTurnoOut]
+    bloqueos: list[AgendaBloqueoOut]

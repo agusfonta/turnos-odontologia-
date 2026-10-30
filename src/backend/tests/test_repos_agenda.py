@@ -524,3 +524,250 @@ def test_buscar_por_telefono_ignora_inactivos(mig_session: Session):
     mig_session.add(activo)
     mig_session.flush()
     assert repo.buscar_por_telefono("+5491100000004").id == activo.id
+
+
+# --- C-06 4.1: BloqueoRepository.turnos_activos_en_rango / obtener_activo_para_actualizar / activos_en_rango ---
+
+
+def _bloqueo(prof, desde: int, hasta: int, **kw) -> Bloqueo:
+    return Bloqueo(
+        profesional_id=prof.id, desde=_h(desde), hasta=_h(hasta), motivo="Sintetico", **kw
+    )
+
+
+def test_turnos_activos_en_rango_solo_reservado_y_confirmado(ctx):
+    session, prof, _, pac = ctx
+    session.add_all(
+        [
+            _turno(prof, pac, 120, 150, estado=EstadoTurno.CONFIRMADO),
+            _turno(prof, pac, 0, 30),  # reservado (default)
+            _turno(prof, pac, 30, 60, estado=EstadoTurno.CANCELADO),
+            _turno(prof, pac, 60, 90, estado=EstadoTurno.ATENDIDO),
+            _turno(prof, pac, 90, 120, estado=EstadoTurno.AUSENTE),
+        ]
+    )
+    session.commit()
+
+    res = BloqueoRepository(session).turnos_activos_en_rango(prof.id, DESDE, HASTA)
+
+    assert [(t.inicio, t.fin, t.estado) for t in res] == [
+        (_h(0), _h(30), EstadoTurno.RESERVADO),
+        (_h(120), _h(150), EstadoTurno.CONFIRMADO),
+    ]  # orden por inicio
+    assert all(isinstance(t.id, uuid.UUID) for t in res)
+
+
+def test_turnos_activos_en_rango_contiguo_y_otro_profesional_no_cuentan(ctx):
+    session, prof, otro, pac = ctx
+    session.add_all(
+        [
+            _turno(prof, pac, -30, 0),  # termina justo en DESDE
+            _turno(prof, pac, 240, 270),  # empieza justo en HASTA
+            _turno(otro, pac, 60, 90),
+        ]
+    )
+    session.commit()
+
+    assert BloqueoRepository(session).turnos_activos_en_rango(prof.id, DESDE, HASTA) == []
+
+
+def test_turnos_activos_en_rango_incluye_el_que_cruza_el_borde(ctx):
+    session, prof, _, pac = ctx
+    session.add_all([_turno(prof, pac, -15, 15), _turno(prof, pac, 225, 270)])
+    session.commit()
+
+    res = BloqueoRepository(session).turnos_activos_en_rango(prof.id, DESDE, HASTA)
+
+    assert [(t.inicio, t.fin) for t in res] == [(_h(-15), _h(15)), (_h(225), _h(270))]
+
+
+def test_obtener_activo_para_actualizar_devuelve_activo_y_none_si_inactivo_o_inexistente(ctx):
+    session, prof, _, _pac = ctx
+    activo, inactivo = _bloqueo(prof, 0, 30), _bloqueo(prof, 60, 90, is_active=False)
+    session.add_all([activo, inactivo])
+    session.commit()
+    repo = BloqueoRepository(session)
+
+    assert repo.obtener_activo_para_actualizar(activo.id).id == activo.id
+    assert repo.obtener_activo_para_actualizar(inactivo.id) is None
+    assert repo.obtener_activo_para_actualizar(uuid.uuid4()) is None
+
+
+def test_obtener_activo_para_actualizar_usa_for_update(ctx):
+    session, prof, _, _pac = ctx
+    b = _bloqueo(prof, 0, 30)
+    session.add(b)
+    session.commit()
+    bloqueo_id = b.id  # leer el atributo expirado despues emitiria otro SELECT
+    sentencias: list[str] = []
+
+    def _capturar(conn, cursor, statement, *args):
+        sentencias.append(statement)
+
+    event.listen(session.get_bind(), "before_cursor_execute", _capturar)
+    try:
+        BloqueoRepository(session).obtener_activo_para_actualizar(bloqueo_id)
+    finally:
+        event.remove(session.get_bind(), "before_cursor_execute", _capturar)
+
+    assert len(sentencias) == 1 and "FOR UPDATE" in sentencias[0]
+
+
+def test_activos_en_rango_intersecta_activos_del_profesional_ordenados(ctx):
+    session, prof, otro, _pac = ctx
+    session.add_all(
+        [
+            _bloqueo(prof, 120, 150),
+            _bloqueo(prof, -30, 15),  # cruza el borde: cuenta
+            _bloqueo(prof, 30, 60, is_active=False),
+            _bloqueo(prof, 240, 300),  # empieza en HASTA: no cuenta
+            _bloqueo(otro, 60, 90),
+        ]
+    )
+    session.commit()
+
+    res = BloqueoRepository(session).activos_en_rango(prof.id, DESDE, HASTA)
+
+    assert [(b.desde, b.hasta) for b in res] == [(_h(-30), _h(15)), (_h(120), _h(150))]
+
+
+def test_ocupados_en_rango_de_bloqueos_sin_cambios(ctx):
+    session, prof, _, _pac = ctx
+    session.add_all([_bloqueo(prof, 0, 30), _bloqueo(prof, 60, 90, is_active=False)])
+    session.commit()
+
+    assert BloqueoRepository(session).ocupados_en_rango(prof.id, DESDE, HASTA) == [
+        (_h(0), _h(30))
+    ]
+
+
+# --- C-06 6.1: TurnoRepository.agenda_en_rango / ProfesionalRepository.por_user_id -------------
+
+
+def _paciente(session: Session, nombre: str, telefono: str) -> Paciente:
+    pac = Paciente(nombre=nombre, telefono=telefono)
+    session.add(pac)
+    session.flush()
+    return pac
+
+
+def test_agenda_en_rango_trae_paciente_y_tratamiento(ctx):
+    from app.infrastructure.models import Tratamiento
+
+    session, prof, _, pac = ctx
+    trat = Tratamiento(nombre=f"Limpieza-{uuid.uuid4().hex[:6]}", duracion_min=30)
+    session.add(trat)
+    session.flush()
+    session.add_all(
+        [
+            _turno(prof, pac, 60, 90, tratamiento_id=trat.id, sobreturno=True),
+            _turno(prof, pac, 0, 30),  # sin tratamiento
+        ]
+    )
+    session.commit()
+    trat_id, trat_nombre = trat.id, trat.nombre
+
+    filas = TurnoRepository(session).agenda_en_rango(prof.id, DESDE, HASTA)
+
+    assert [(f.inicio, f.fin) for f in filas] == [(_h(0), _h(30)), (_h(60), _h(90))]
+    sin_trat, con_trat = filas
+    assert (sin_trat.tratamiento_id, sin_trat.tratamiento_nombre) == (None, None)
+    assert (con_trat.tratamiento_id, con_trat.tratamiento_nombre) == (trat_id, trat_nombre)
+    assert con_trat.sobreturno is True and sin_trat.sobreturno is False
+    assert (sin_trat.paciente_id, sin_trat.paciente_nombre, sin_trat.paciente_telefono) == (
+        pac.id, "Paciente Sintetico", "+5491100000000",
+    )
+    assert sin_trat.origen == "online" and sin_trat.estado is EstadoTurno.RESERVADO
+    assert not hasattr(sin_trat, "token_publico")
+
+
+def test_agenda_en_rango_incluye_todos_los_estados_y_cruces_de_borde(ctx):
+    session, prof, otro, pac = ctx
+    session.add_all(
+        [
+            _turno(prof, pac, 0, 30, estado=EstadoTurno.CANCELADO),
+            _turno(prof, pac, 30, 60, estado=EstadoTurno.ATENDIDO),
+            _turno(prof, pac, 60, 90, estado=EstadoTurno.AUSENTE),
+            _turno(prof, pac, 90, 120, estado=EstadoTurno.CONFIRMADO),
+            _turno(prof, pac, 225, 270),  # cruza el borde final
+            _turno(prof, pac, 240, 270, sobreturno=True),  # empieza en HASTA: fuera
+            _turno(otro, pac, 0, 30),  # otro profesional
+        ]
+    )
+    session.commit()
+
+    filas = TurnoRepository(session).agenda_en_rango(prof.id, DESDE, HASTA)
+
+    assert [f.estado for f in filas] == [
+        EstadoTurno.CANCELADO,
+        EstadoTurno.ATENDIDO,
+        EstadoTurno.AUSENTE,
+        EstadoTurno.CONFIRMADO,
+        EstadoTurno.RESERVADO,
+    ]
+
+
+def test_agenda_en_rango_turno_que_cruza_el_borde_inicial_incluido(ctx):
+    session, prof, _, pac = ctx
+    session.add_all([_turno(prof, pac, -30, 15), _turno(prof, pac, -60, -30)])
+    session.commit()
+
+    filas = TurnoRepository(session).agenda_en_rango(prof.id, DESDE, HASTA)
+
+    assert [(f.inicio, f.fin) for f in filas] == [(_h(-30), _h(15))]
+
+
+def test_agenda_en_rango_una_sola_sentencia_sin_n_mas_1(ctx):
+    session, prof, _, _pac = ctx
+    from app.infrastructure.models import Tratamiento
+
+    trat = Tratamiento(nombre=f"T-{uuid.uuid4().hex[:6]}", duracion_min=30)
+    session.add(trat)
+    session.flush()
+    for i in range(6):
+        pac_i = _paciente(session, f"Paciente {i}", f"+54911000010{i:02d}")
+        session.add(_turno(prof, pac_i, i * 30, i * 30 + 30, tratamiento_id=trat.id if i % 2 else None))
+    session.commit()
+    prof_id = prof.id
+    sentencias: list[str] = []
+
+    def _capturar(conn, cursor, statement, *args):
+        sentencias.append(statement)
+
+    event.listen(session.get_bind(), "before_cursor_execute", _capturar)
+    try:
+        filas = TurnoRepository(session).agenda_en_rango(prof_id, DESDE, HASTA)
+    finally:
+        event.remove(session.get_bind(), "before_cursor_execute", _capturar)
+
+    assert len(filas) == 6 and len(sentencias) == 1
+    assert "token_publico" not in sentencias[0]
+
+
+def test_agenda_en_rango_desempata_por_id_con_mismo_inicio(ctx):
+    session, prof, _, pac = ctx
+    a, b = _turno(prof, pac, 0, 30), _turno(prof, pac, 0, 30, sobreturno=True)
+    session.add_all([a, b])
+    session.commit()
+
+    filas = TurnoRepository(session).agenda_en_rango(prof.id, DESDE, HASTA)
+
+    assert [f.id for f in filas] == sorted([a.id, b.id])
+
+
+def test_por_user_id_devuelve_el_profesional_vinculado_o_none(ctx):
+    from app.infrastructure.models import User, UserRole
+    from app.infrastructure.repositories import ProfesionalRepository
+
+    session, prof, otro, _pac = ctx
+    user = User(email=f"odo-{uuid.uuid4().hex[:6]}@example.test", password_hash="x", rol=UserRole.ODONTOLOGO)
+    sin_vinculo = User(email=f"odo-{uuid.uuid4().hex[:6]}@example.test", password_hash="x", rol=UserRole.ODONTOLOGO)
+    session.add_all([user, sin_vinculo])
+    session.flush()
+    prof.user_id = user.id
+    session.commit()
+    repo = ProfesionalRepository(session)
+
+    assert repo.por_user_id(user.id).id == prof.id
+    assert repo.por_user_id(sin_vinculo.id) is None
+    assert repo.por_user_id(uuid.uuid4()) is None

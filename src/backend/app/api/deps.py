@@ -56,6 +56,16 @@ require_secretaria = require_role("secretaria")
 require_odontologo = require_role("odontologo")
 
 
+def require_staff(current_user: User = Depends(get_current_user)) -> User:
+    """Usuario autenticado con rol `secretaria` u `odontologo` (agenda interna, C-06)."""
+    if current_user.rol.value not in ("secretaria", "odontologo"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Operation not permitted for this role",
+        )
+    return current_user
+
+
 oauth2_scheme_opcional = OAuth2PasswordBearer(tokenUrl="/api/auth/login", auto_error=False)
 
 
