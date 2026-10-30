@@ -200,7 +200,7 @@ Paso │ Agente A (Backend Core)      │ Agente B (Backend Aux)       │ Agent
   - Decision 7 del C-04 archivado (`openspec/changes/archive/2026-10-27-c-04-disponibilidad-y-reserva/design.md`)
 
 ### [C-05] `gestion-secretaria-turnos`
-- **Estado**: `[ ]` pendiente
+- **Estado**: `[x]` completado (archivado 2026-10-30 → `openspec/changes/archive/2026-10-30-c-05-gestion-secretaria-turnos/`; specs sincronizadas en `openspec/specs/turnos/spec.md`)
 - **Scope**: Alta manual, mover y cancelar por secretaria (US-005 parcial, US-006; Flujo 2)
   - `POST /api/turnos/manual` — alta con paciente nuevo o existente (deduplicación por teléfono según 10: crear si no existe)
   - `PATCH /api/turnos/{id}` — reprogramar: respeta anticipación mínima configurable (RN-TU-01), revalida disponibilidad, reprograma/cancela notificaciones pendientes del turno
