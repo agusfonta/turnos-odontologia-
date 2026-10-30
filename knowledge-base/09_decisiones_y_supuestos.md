@@ -49,6 +49,36 @@ React/TS/Vite.
 **Justificación**: la confirmación era para el horario anterior; reconfirmar reduce no-shows.
 **Trade-offs aceptados**: un paso extra para el paciente; requiere agregar la transición a la máquina de estados.
 
+### DD-08 — Migración 003: triggers anti-solape turno↔bloqueo (2026-10-30)
+**Decisión**: la migración 003 agrega triggers en `turnos` y `bloqueos` que rechazan (sqlstate 23P01) un turno activo dentro de un bloqueo activo y viceversa, serializados con el mismo advisory lock por profesional que `bloquear_agenda` (C-05).
+**Contexto**: una EXCLUDE no cruza tablas; bloqueo y reserva concurrentes podían confirmar ambos. La regla dura exige anti-solape en Postgres.
+**Justificación**: garantiza el invariante para todas las vías de escritura sin tocar `reservar_turno` (CRÍTICO).
+**Trade-offs aceptados**: lógica en triggers (menos visible); las reservas públicas se serializan por profesional durante milisegundos; el upgrade aborta si ya hay datos inconsistentes.
+
+### DD-09 — Vínculo odontólogo↔profesional: `profesionales.user_id` (2026-10-30)
+**Decisión**: columna nullable, única, FK a `users` (ON DELETE RESTRICT) en `profesionales`, agregada en la 003.
+**Contexto**: US-003 ("solo su agenda") requiere saber qué profesional es el usuario; no había vínculo.
+**Justificación**: el profesional existe sin login; evita una columna casi siempre nula en `users`.
+**Trade-offs aceptados**: sin endpoint de administración (vínculo por seed/SQL hasta un change de ABM); "solo odontólogos" lo valida la aplicación, no la base.
+
+### DD-10 — Bloqueo sobre turnos activos se rechaza con 409 (2026-10-30)
+**Decisión**: crear un bloqueo que pisa turnos `reservado`/`confirmado` responde 409 `bloqueo_con_turnos` con la lista de turnos; la secretaria los reprograma/cancela y reintenta.
+**Contexto**: la KB no definía qué pasa con turnos preexistentes.
+**Justificación**: evita turnos vivos en un rango sin atención y hace el invariante bidireccional.
+**Trade-offs aceptados**: un paso manual extra para la secretaria; no se cancela automáticamente (efecto masivo).
+
+### DD-11 — La agenda incluye siempre los turnos cancelados (2026-10-30)
+**Decisión**: `GET /api/agenda` devuelve todos los estados; la SPA filtra.
+**Contexto**: C-10 muestra badge `cancelado`.
+**Justificación**: contrato simple y estable; sin parámetros extra.
+**Trade-offs aceptados**: payload algo mayor.
+
+### DD-12 — Trazabilidad de bloqueos por log estructurado (2026-10-30)
+**Decisión**: alta/baja de bloqueos se registran con `logger.info` estructurado (`accion`, `bloqueo_id`, `profesional_id`, `user_id`); sin `created_by` ni tabla de auditoría en v1.
+**Contexto**: `bloqueos` no tiene autoría.
+**Justificación**: evita ampliar el modelo; suficiente para v1.
+**Trade-offs aceptados**: sin auditoría persistente consultable.
+
 ## Supuestos inferidos
 
 ### SU-01 — Anticipación mínima 24h
