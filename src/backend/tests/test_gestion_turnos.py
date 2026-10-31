@@ -615,3 +615,104 @@ def test_la_uow_de_escritura_cierra_antes_de_abrir_la_de_lectura_del_409(
         _reprog(factoria_espia(mig_engine, bitacora), turno, "14:00", _secretaria(sec))
 
     assert bitacora == ["enter", "rollback", "close", "enter", "commit", "close"]
+
+
+# --- C-07 3.1 confirmar --------------------------------------------------------------
+
+from app.application.gestion_turnos import confirmar_turno  # noqa: E402
+
+
+def test_confirmar_reservado_pasa_a_confirmado_y_audita(uow_factory, mig_session, prof):
+    turno = crear_turno(mig_session, prof, "10:00")
+
+    dto = confirmar_turno(uow_factory, turno.id, actor=PACIENTE, ahora=AHORA)
+
+    assert dto.estado is EstadoTurno.CONFIRMADO and dto.id == turno.id
+    assert _estado(mig_session, turno.id) is EstadoTurno.CONFIRMADO
+    (aud,) = auditorias(mig_session, turno.id, "confirmar")
+    assert (aud.actor_tipo.value, aud.actor_user_id) == ("paciente", None)
+    assert aud.detalle == {"estado_anterior": "reservado"}
+
+
+def test_confirmar_con_actor_secretaria_audita_el_usuario(uow_factory, mig_session, prof, sec):
+    turno = crear_turno(mig_session, prof, "10:00")
+
+    confirmar_turno(uow_factory, turno.id, actor=_secretaria(sec), ahora=AHORA)
+
+    (aud,) = auditorias(mig_session, turno.id, "confirmar")
+    assert (aud.actor_tipo.value, aud.actor_user_id) == ("secretaria", sec.id)
+
+
+def test_reconfirmar_es_noop_idempotente_sin_auditoria(uow_factory, mig_session, prof):
+    turno = crear_turno(mig_session, prof, "10:00", estado=EstadoTurno.CONFIRMADO)
+
+    dto = confirmar_turno(uow_factory, turno.id, actor=PACIENTE, ahora=AHORA)
+
+    assert dto.estado is EstadoTurno.CONFIRMADO and dto.id == turno.id
+    assert auditorias(mig_session, turno.id) == []
+    assert _estado(mig_session, turno.id) is EstadoTurno.CONFIRMADO
+
+
+def test_reconfirmar_un_confirmado_ya_pasado_sigue_siendo_noop(uow_factory, mig_session, prof):
+    turno = crear_turno(mig_session, prof, "10:00", estado=EstadoTurno.CONFIRMADO)
+
+    dto = confirmar_turno(uow_factory, turno.id, actor=PACIENTE, ahora=TARDE)
+
+    assert dto.estado is EstadoTurno.CONFIRMADO
+    assert auditorias(mig_session, turno.id) == []
+
+
+@pytest.mark.parametrize(
+    "terminal", [EstadoTurno.CANCELADO, EstadoTurno.ATENDIDO, EstadoTurno.AUSENTE]
+)
+def test_confirmar_terminal_422_sin_auditoria(uow_factory, mig_session, prof, terminal):
+    turno = crear_turno(mig_session, prof, "10:00", estado=terminal)
+
+    with pytest.raises(TransicionNoPermitidaError) as exc:
+        confirmar_turno(uow_factory, turno.id, actor=PACIENTE, ahora=AHORA)
+
+    assert exc.value.estado_actual == terminal.value
+    assert auditorias(mig_session, turno.id) == []
+    assert _estado(mig_session, turno.id) is terminal
+
+
+def test_confirmar_cancelado_ya_pasado_responde_transicion_no_anticipacion(uow_factory, mig_session, prof):
+    turno = crear_turno(mig_session, prof, "10:00", estado=EstadoTurno.CANCELADO)
+
+    with pytest.raises(TransicionNoPermitidaError):
+        confirmar_turno(uow_factory, turno.id, actor=PACIENTE, ahora=TARDE)
+
+
+@pytest.mark.parametrize("ahora", [TARDE, datetime(2030, 3, 4, 13, 0, tzinfo=timezone.utc)])
+def test_confirmar_turno_ya_iniciado_422_sin_cambios(uow_factory, mig_session, prof, ahora):
+    turno = crear_turno(mig_session, prof, "10:00")  # empieza 13:00 UTC; `ahora == inicio` cuenta
+
+    with pytest.raises(AnticipacionInsuficienteError) as exc:
+        confirmar_turno(uow_factory, turno.id, actor=PACIENTE, ahora=ahora)
+
+    assert exc.value.min_horas == 0
+    assert _estado(mig_session, turno.id) is EstadoTurno.RESERVADO
+    assert auditorias(mig_session, turno.id) == []
+
+
+def test_confirmar_dentro_de_la_ventana_de_cancelacion_se_acepta(uow_factory, mig_session, prof):
+    turno = crear_turno(mig_session, prof, "10:00")
+
+    confirmar_turno(uow_factory, turno.id, actor=PACIENTE, ahora=CERCA)  # faltan 2 h (< 24 h)
+
+    assert _estado(mig_session, turno.id) is EstadoTurno.CONFIRMADO
+
+
+def test_confirmar_inexistente_404(uow_factory):
+    with pytest.raises(TurnoNoEncontradoError):
+        confirmar_turno(uow_factory, uuid.uuid4(), actor=PACIENTE, ahora=AHORA)
+
+
+def test_confirmar_no_cambia_el_token_publico(uow_factory, mig_session, prof):
+    turno = crear_turno(mig_session, prof, "10:00")
+    token = turno.token_publico
+
+    confirmar_turno(uow_factory, turno.id, actor=PACIENTE, ahora=AHORA)
+
+    mig_session.expire_all()
+    assert mig_session.get(Turno, turno.id).token_publico == token

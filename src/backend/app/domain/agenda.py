@@ -38,6 +38,19 @@ class AgendaTurno:
     tratamiento_nombre: str | None
 
 
+@dataclass(frozen=True, slots=True)
+class TurnoPublico:
+    """Detalle de un turno para el paciente (C-07 D4): sin `id`, paciente ni `token_publico`."""
+
+    inicio: datetime
+    fin: datetime
+    estado: EstadoTurno
+    profesional_id: uuid.UUID
+    profesional_nombre: str
+    tratamiento_id: int | None
+    tratamiento_nombre: str | None
+
+
 def rango_agenda(dia: date, vista: Vista) -> tuple[date, date]:
     """Fechas locales `(desde, hasta)` inclusivas: el dia, o lunes..domingo de su semana ISO."""
     if vista == "dia":

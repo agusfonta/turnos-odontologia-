@@ -13,13 +13,14 @@ from sqlalchemy import select, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
-from app.domain.agenda import AgendaTurno, TurnoEnConflicto
+from app.domain.agenda import AgendaTurno, TurnoEnConflicto, TurnoPublico
 from app.domain.disponibilidad import Franja, Ocupado
 from app.domain.turno_estados import EstadoTurno
 from app.infrastructure.models import (
     Bloqueo,
     HorarioProfesional,
     Paciente,
+    Profesional,
     Tratamiento,
     Turno,
     TurnoOrigen,
@@ -168,6 +169,42 @@ class TurnoRepository(BaseRepository[Turno]):
         return self._session.execute(
             select(Turno.profesional_id).where(Turno.id == turno_id)
         ).scalar_one_or_none()
+
+    def id_por_token(self, token: str) -> uuid.UUID | None:
+        """`id` del turno con ese `token_publico` (indice unico); `None` si no matchea (C-07 D1)."""
+        return self._session.execute(
+            select(Turno.id).where(Turno.token_publico == token)
+        ).scalar_one_or_none()
+
+    def detalle_publico(self, turno_id: uuid.UUID) -> TurnoPublico | None:
+        """Turno + nombres de profesional/tratamiento (LEFT JOIN), cualquier estado (C-07 D4)."""
+        stmt = (
+            select(
+                Turno.inicio,
+                Turno.fin,
+                Turno.estado,
+                Turno.profesional_id,
+                Profesional.nombre,
+                Tratamiento.id,
+                Tratamiento.nombre,
+            )
+            .join(Profesional, Profesional.id == Turno.profesional_id)
+            .outerjoin(Tratamiento, Tratamiento.id == Turno.tratamiento_id)
+            .where(Turno.id == turno_id)
+        )
+        fila = self._session.execute(stmt).one_or_none()
+        if fila is None:
+            return None
+        ini, fin, estado, prof_id, prof_nombre, trat_id, trat_nombre = fila
+        return TurnoPublico(
+            inicio=ini,
+            fin=fin,
+            estado=estado,
+            profesional_id=prof_id,
+            profesional_nombre=prof_nombre,
+            tratamiento_id=trat_id,
+            tratamiento_nombre=trat_nombre,
+        )
 
     def obtener_para_actualizar(self, turno_id: uuid.UUID) -> Turno | None:
         """`SELECT ... FOR UPDATE` del turno (relee el estado vigente, sin cache de sesion)."""

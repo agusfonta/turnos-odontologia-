@@ -525,3 +525,59 @@ def test_commit_fallido_500_sin_auditoria_y_cola_sin_tocar(
     fila = mig_session.get(Turno, turno.id)
     assert (fila.estado, fila.inicio) == (EstadoTurno.RESERVADO, inicio("10:00"))
     assert cuenta(mig_session, AuditoriaTurno) == 0
+
+
+# --- C-07 6.6 POST /api/turnos/{id}/confirmar (secretaria) ------------------------------------
+
+
+def test_secretaria_confirma_200(api_client, mig_session, prof, sec, fake_redis):
+    turno = crear_turno(mig_session, prof, "10:00")
+
+    resp = api_client.post(f"/api/turnos/{turno.id}/confirmar", headers=_auth(sec))
+
+    assert resp.status_code == 200, resp.text
+    cuerpo = resp.json()
+    assert cuerpo["estado"] == "confirmado" and cuerpo["id"] == str(turno.id)
+    assert "token_publico" not in cuerpo
+    (aud,) = auditorias(mig_session, turno.id, "confirmar")
+    assert (aud.actor_tipo.value, aud.actor_user_id) == ("secretaria", sec.id)
+    assert _jobs(fake_redis) == {}  # confirmar no toca la cola
+
+
+def test_secretaria_reconfirma_200_sin_auditoria_nueva(api_client, mig_session, prof, sec):
+    turno = crear_turno(mig_session, prof, "10:00")
+
+    for _ in range(2):
+        assert api_client.post(f"/api/turnos/{turno.id}/confirmar", headers=_auth(sec)).status_code == 200
+
+    assert len(auditorias(mig_session, turno.id, "confirmar")) == 1
+
+
+def test_confirmar_sin_token_401_y_odontologo_403_sin_cambios(api_client, mig_session, prof):
+    turno = crear_turno(mig_session, prof, "10:00")
+    odo = _odontologo(mig_session)
+    url = f"/api/turnos/{turno.id}/confirmar"
+
+    assert api_client.post(url).status_code == 401
+    assert api_client.post(url, headers={"Authorization": "Bearer basura"}).status_code == 401
+    assert api_client.post(url, headers=_auth(odo)).status_code == 403
+
+    mig_session.expire_all()
+    assert mig_session.get(Turno, turno.id).estado is EstadoTurno.RESERVADO
+    assert auditorias(mig_session, turno.id) == []
+
+
+def test_confirmar_inexistente_404_y_uuid_invalido_422(api_client, sec):
+    r404 = api_client.post(f"/api/turnos/{uuid.uuid4()}/confirmar", headers=_auth(sec))
+    assert r404.status_code == 404 and r404.json()["code"] == "turno_no_encontrado"
+    assert api_client.post("/api/turnos/no-es-uuid/confirmar", headers=_auth(sec)).status_code == 422
+
+
+@pytest.mark.parametrize("estado", [EstadoTurno.CANCELADO, EstadoTurno.ATENDIDO, EstadoTurno.AUSENTE])
+def test_secretaria_confirmar_terminal_422(api_client, mig_session, prof, sec, estado):
+    turno = crear_turno(mig_session, prof, "10:00", estado=estado)
+
+    resp = api_client.post(f"/api/turnos/{turno.id}/confirmar", headers=_auth(sec))
+
+    assert resp.status_code == 422 and resp.json()["code"] == "transicion_no_permitida"
+    assert auditorias(mig_session, turno.id) == []

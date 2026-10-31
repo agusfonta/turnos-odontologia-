@@ -4,7 +4,10 @@
 * `POST /api/turnos/manual`: alta manual (reusa paciente por telefono, admite sobreturno).
 * `PATCH /api/turnos/{id}`: reprograma (confirmado -> reservado); re-encola el recordatorio.
 * `DELETE /api/turnos/{id}`: cancela (baja logica); quita el recordatorio de la cola.
-Las tres rutas de gestion exigen rol `secretaria` (401 sin token/invalido, 403 otro rol).
+* `POST /api/turnos/{id}/confirmar`: confirma (C-07; mismo caso de uso que la puerta por token,
+  con actor `secretaria`); idempotente, no toca la cola.
+Las rutas de gestion exigen rol `secretaria` (401 sin token/invalido, 403 otro rol). La puerta
+publica por token vive en `app/api/autogestion.py`.
 
 Patron de efectos post-commit: el caso de uso es el limite de la transaccion (si
 retorna, ya hubo commit); los efectos externos (Redis) se ejecutan aca, DESPUES de que
@@ -26,6 +29,7 @@ from app.application.gestion_turnos import (
     TurnoGestionado,
     alta_manual_turno,
     cancelar_turno,
+    confirmar_turno,
     reprogramar_turno,
 )
 from app.application.reservas import reservar_turno
@@ -144,4 +148,18 @@ def cancelar(
     actor = Actor(AuditoriaActor.SECRETARIA, secretaria.id)
     dto = cancelar_turno(uow_factory, turno_id, actor=actor, ahora=ahora)
     cola.cancelar(dto.id)  # post-commit; nunca lanza
+    return _gestionado_out(dto, tz)
+
+
+@router.post("/{turno_id}/confirmar", response_model=TurnoGestionadoOut)
+def confirmar(
+    turno_id: TurnoIdPath,
+    uow_factory: UowDep,
+    ahora: AhoraDep,
+    secretaria: SecretariaDep,
+) -> TurnoGestionadoOut:
+    """`reservado` -> `confirmado`; reconfirmar es 200 sin auditoria; no toca la cola."""
+    tz = ZoneInfo(get_settings().CLINIC_TIMEZONE)
+    actor = Actor(AuditoriaActor.SECRETARIA, secretaria.id)
+    dto = confirmar_turno(uow_factory, turno_id, actor=actor, ahora=ahora)
     return _gestionado_out(dto, tz)

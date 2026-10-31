@@ -1,4 +1,4 @@
-"""Casos de uso de gestion de turnos por secretaria (C-05): alta manual, reprogramar, cancelar.
+"""Casos de uso de gestion de turnos (C-05): alta manual, reprogramar, cancelar; C-07: confirmar.
 
 Mismo patron que `reservas.py` (C-04b): reciben una `uow_factory`, abren
 `with uow_factory() as session:` ADENTRO, NUNCA llaman `commit`/`rollback`, hacen un
@@ -6,7 +6,7 @@ Mismo patron que `reservas.py` (C-04b): reciben una `uow_factory`, abren
 efectos externos (Redis) al router, DESPUES del retorno (= ya hubo commit).
 
 Actor: `Actor(tipo, user_id)`. La secretaria (DD-05) esta exenta de la anticipacion minima;
-la rama paciente es alcanzable solo desde el caso de uso (C-07 agregara la puerta por token).
+el actor paciente entra por la puerta de token (`app/application/autogestion.py`, C-07).
 
 Orden de locks en `reprogramar_turno` (evita ciclos, D4):
   1. `profesional_de(turno_id)` SIN lock (404 si no existe);
@@ -30,6 +30,7 @@ from sqlalchemy.orm import Session
 
 from app.application import reservas
 from app.core.exceptions import (
+    AnticipacionInsuficienteError,
     HuecoOcupadoError,
     InicioInvalidoError,
     ProfesionalNoEncontradoError,
@@ -281,6 +282,47 @@ def cancelar_turno(
                     "estado_anterior": estado_anterior.value,
                     "exento_anticipacion": exento,
                 },
+            )
+        )
+        session.flush()
+        return _gestionado(turno)
+
+
+def confirmar_turno(
+    uow_factory: UowFactory,
+    turno_id: uuid.UUID,
+    *,
+    actor: Actor,
+    ahora: datetime,
+) -> TurnoGestionado:
+    """`reservado` -> `confirmado` (C-07 D2), unico para la puerta por token y la de secretaria.
+
+    Orden: (1) `FOR UPDATE` (404); (2) ya `confirmado` -> DTO sin auditoria (no-op idempotente);
+    (3) `transicionar` (terminal -> 422 transicion); (4) `inicio <= ahora` -> 422 anticipacion
+    con `min_horas=0`; (5) auditoria `confirmar` + `flush()`. No toma el advisory lock (no ocupa
+    agenda) y NO aplica `CANCEL_MIN_HOURS`: confirmar dentro de la ventana esta permitido.
+    """
+    with uow_factory() as session:
+        turno = TurnoRepository(session).obtener_para_actualizar(turno_id)
+        if turno is None:
+            raise TurnoNoEncontradoError()
+        estado_anterior = turno.estado
+        if estado_anterior is EstadoTurno.CONFIRMADO:
+            return _gestionado(turno)
+        try:
+            nuevo_estado = transicionar(estado_anterior, EstadoTurno.CONFIRMADO)
+        except TransicionInvalidaError as exc:
+            raise TransicionNoPermitidaError(exc.actual.value) from exc
+        if turno.inicio <= ahora:
+            raise AnticipacionInsuficienteError(0)
+        turno.estado = nuevo_estado
+        session.add(
+            AuditoriaTurno(
+                turno_id=turno.id,
+                accion="confirmar",
+                actor_tipo=actor.tipo,
+                actor_user_id=actor.user_id,
+                detalle={"estado_anterior": estado_anterior.value},
             )
         )
         session.flush()

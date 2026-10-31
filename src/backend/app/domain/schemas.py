@@ -240,3 +240,34 @@ class AgendaOut(BaseModel):
     hasta: date
     turnos: list[AgendaTurnoOut]
     bloqueos: list[AgendaBloqueoOut]
+
+
+# --- Autogestion por token (C-07, D4): sin id, paciente, token, origen ni sobreturno ---
+
+
+class TurnoReprogramarPublico(BaseModel):
+    """Entrada de PATCH /api/turnos/por-token/{token}: solo el nuevo `inicio` (sin sobreturno)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    inicio: AwareDatetime
+
+
+class TurnoPorTokenOut(BaseModel):
+    """Respuesta de confirmar/reprogramar/cancelar por token."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    inicio: AwareDatetime
+    fin: AwareDatetime
+    estado: EstadoTurnoLiteral
+    profesional_id: uuid.UUID
+    tratamiento_id: int | None
+    gestionable_hasta: AwareDatetime
+
+
+class TurnoPorTokenDetalle(TurnoPorTokenOut):
+    """Respuesta del GET por token: suma los nombres (join de solo lectura)."""
+
+    profesional_nombre: str
+    tratamiento_nombre: str | None

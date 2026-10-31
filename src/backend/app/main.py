@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.health import router as health_router
 from app.api.agenda import router as agenda_router
 from app.api.auth import router as auth_router
+from app.api.autogestion import router as autogestion_router
 from app.api.bloqueos import router as bloqueos_router
 from app.api.disponibilidad import router as disponibilidad_router
 from app.api.profesionales import router as profesionales_router
@@ -30,6 +31,7 @@ def create_app() -> FastAPI:
     app.include_router(profesionales_router, prefix="/api")
     app.include_router(tratamientos_router, prefix="/api")
     app.include_router(disponibilidad_router, prefix="/api")
+    app.include_router(autogestion_router, prefix="/api")  # antes que turnos (por-token)
     app.include_router(turnos_router, prefix="/api")
     app.include_router(bloqueos_router, prefix="/api")
     app.include_router(agenda_router, prefix="/api")

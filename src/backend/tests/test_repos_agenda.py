@@ -16,6 +16,7 @@ from app.infrastructure.models import (
     HorarioProfesional,
     Paciente,
     Profesional,
+    Tratamiento,
     Turno,
     TurnoOrigen,
 )
@@ -771,3 +772,95 @@ def test_por_user_id_devuelve_el_profesional_vinculado_o_none(ctx):
     assert repo.por_user_id(user.id).id == prof.id
     assert repo.por_user_id(sin_vinculo.id) is None
     assert repo.por_user_id(uuid.uuid4()) is None
+
+
+# --- C-07 2.1: TurnoRepository.id_por_token ------------------------------------------------
+
+
+def test_id_por_token_devuelve_el_turno(ctx):
+    session, prof, _, pac = ctx
+    turno = _turno(prof, pac, 0, 30, token_publico="tok-sintetico-1")
+    session.add(turno)
+    session.commit()
+
+    assert TurnoRepository(session).id_por_token("tok-sintetico-1") == turno.id
+
+
+def test_id_por_token_inexistente_devuelve_none(ctx):
+    session, prof, _, pac = ctx
+    session.add(_turno(prof, pac, 0, 30, token_publico="tok-sintetico-1"))
+    session.commit()
+
+    assert TurnoRepository(session).id_por_token("otro-token") is None
+
+
+def test_id_por_token_con_dos_turnos_devuelve_el_correcto(ctx):
+    session, prof, _, pac = ctx
+    uno = _turno(prof, pac, 0, 30, token_publico="tok-a")
+    dos = _turno(prof, pac, 60, 90, token_publico="tok-b")
+    session.add_all([uno, dos])
+    session.commit()
+
+    repo = TurnoRepository(session)
+    assert repo.id_por_token("tok-b") == dos.id
+    assert repo.id_por_token("tok-a") == uno.id
+
+
+def test_id_por_token_nulo_no_matchea_ningun_string(ctx):
+    session, prof, _, pac = ctx
+    session.add(_turno(prof, pac, 0, 30))  # token_publico NULL (seed)
+    session.commit()
+
+    repo = TurnoRepository(session)
+    assert repo.id_por_token("") is None
+    assert repo.id_por_token("None") is None
+    assert repo.id_por_token("null") is None
+
+
+# --- C-07 2.2: detalle publico (turno + nombres) -------------------------------------------
+
+
+def test_detalle_publico_incluye_nombres_de_profesional_y_tratamiento(ctx):
+    session, prof, _, pac = ctx
+    trat = Tratamiento(nombre="Limpieza Sintetica", duracion_min=30)
+    session.add(trat)
+    session.flush()
+    turno = _turno(prof, pac, 0, 30, token_publico="tok-d", tratamiento_id=trat.id)
+    session.add(turno)
+    session.commit()
+
+    detalle = TurnoRepository(session).detalle_publico(turno.id)
+
+    assert detalle is not None
+    assert detalle.profesional_nombre == prof.nombre
+    assert (detalle.tratamiento_id, detalle.tratamiento_nombre) == (trat.id, "Limpieza Sintetica")
+    assert (detalle.inicio, detalle.fin, detalle.estado) == (_h(0), _h(30), EstadoTurno.RESERVADO)
+    assert detalle.profesional_id == prof.id
+
+
+def test_detalle_publico_sin_tratamiento_devuelve_nulos(ctx):
+    session, prof, _, pac = ctx
+    turno = _turno(prof, pac, 0, 30, token_publico="tok-e")
+    session.add(turno)
+    session.commit()
+
+    detalle = TurnoRepository(session).detalle_publico(turno.id)
+
+    assert detalle is not None
+    assert (detalle.tratamiento_id, detalle.tratamiento_nombre) == (None, None)
+
+
+def test_detalle_publico_devuelve_turno_cancelado(ctx):
+    session, prof, _, pac = ctx
+    turno = _turno(prof, pac, 0, 30, token_publico="tok-f", estado=EstadoTurno.CANCELADO)
+    session.add(turno)
+    session.commit()
+
+    detalle = TurnoRepository(session).detalle_publico(turno.id)
+
+    assert detalle is not None and detalle.estado is EstadoTurno.CANCELADO
+
+
+def test_detalle_publico_inexistente_devuelve_none(ctx):
+    session, *_ = ctx
+    assert TurnoRepository(session).detalle_publico(uuid.uuid4()) is None
