@@ -79,6 +79,18 @@ React/TS/Vite.
 **Justificación**: evita ampliar el modelo; suficiente para v1.
 **Trade-offs aceptados**: sin auditoría persistente consultable.
 
+### DD-13 — Token de autogestión estable, sin vencimiento y en claro en v1 (2026-10-30)
+**Decisión**: `turnos.token_publico` no rota (ni al reprogramar ni al confirmar), no tiene TTL propio, se guarda en claro (índice único) y las rutas por token no llevan rate limiting en C-07. El `GET` por token expone solo horario, estado, profesional y tratamiento (id+nombre) y `gestionable_hasta`; nunca datos del paciente ni el `id` del turno. Todo token inválido (inexistente o malformado) responde el mismo 404.
+**Contexto**: C-07 abre la puerta pública por token (RN-NO-02, link de 1 clic del recordatorio).
+**Justificación**: el link ya enviado sigue funcionando; el estado del turno y la anticipación limitan lo que se puede hacer; 256 bits hacen inviable la enumeración.
+**Trade-offs aceptados**: un token filtrado sirve hasta que el turno sea terminal; hash en reposo (migración 004) y rate limiting quedan para C-11.
+
+### DD-14 — Confirmación idempotente, solo secretaria desde el staff (2026-10-30)
+**Decisión**: reconfirmar un turno `confirmado` responde 200 sin auditoría nueva; confirmar un turno ya iniciado responde 422 `anticipacion_insuficiente` (`min_horas=0`), pero confirmar dentro de la ventana de `CANCEL_MIN_HOURS` se permite; al reprogramar la anticipación se exige solo sobre el horario actual; desde el staff solo `secretaria` confirma (`POST /api/turnos/{id}/confirmar`).
+**Contexto**: el link de WhatsApp puede abrirse dos veces; la confirmación no ocupa agenda.
+**Justificación**: un doble clic no debe dar error; la confirmación no protege agenda, así que no usa la ventana de cancelación.
+**Trade-offs aceptados**: el worker de C-08 debe decidir si omite el recordatorio de turnos ya `confirmado`.
+
 ## Supuestos inferidos
 
 ### SU-01 — Anticipación mínima 24h
