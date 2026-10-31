@@ -232,7 +232,7 @@ Paso │ Agente A (Backend Core)      │ Agente B (Backend Aux)       │ Agent
   - `knowledge-base/03_actores_y_roles.md` §RBAC — Matriz de permisos
 
 ### [C-07] `autogestion-por-token`
-- **Estado**: `[ ]` pendiente
+- **Estado**: `[x]` completado (archivado 2026-10-30 → `openspec/changes/archive/2026-10-30-c-07-autogestion-por-token/`; specs sincronizadas en `openspec/specs/turnos/spec.md`)
 - **Scope**: Gestión pública del turno sin login vía token (US-005; rutas públicas de 03)
   - `GET /api/turnos/por-token/{token}` — detalle mínimo para gestión
   - `POST /api/turnos/por-token/{token}/confirmar` — confirmación sin login (RN-NO-02)
